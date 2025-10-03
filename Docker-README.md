@@ -29,7 +29,7 @@ Once running, access the application at: http://localhost:8080
 
 - **Frontend**: React app built for production and served as static files
 - **Backend**: Express.js server that serves both the API and the frontend
-- **Port**: Single port 5000 for both frontend and backend
+- **Port**: Single port 8080 for both frontend and backend
 
 ## Development vs Production
 
