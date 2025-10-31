@@ -1,38 +1,78 @@
 import React, { useEffect, useState } from 'react';
 import SignIn from './loginPage';
+import Register from './registerPage';
+import Dashboard from './Dashboard';
 import './App.css';
 
 function App() {
-  const [message, setMessage] = useState('');
-  const [showLogin, setShowLogin] = useState(true);
+  const [user, setUser] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [currentView, setCurrentView] = useState('login'); // 'login', 'register', 'dashboard'
 
   useEffect(() => {
-    fetch('/api')
-      .then(response => {
-        if (!response.ok) {
-          throw new Error('Network response was not ok');
-        }
-        return response.json();
-      })
-      .then(data => setMessage(data.message))
-      .catch(error => {
-        console.log('Backend not available:', error);
-        setMessage('Backend not connected (start backend server)');
-      });
+    // Check if user is already logged in
+    const token = localStorage.getItem('token');
+    const userData = localStorage.getItem('user');
+    
+    if (token && userData) {
+      try {
+        const parsedUser = JSON.parse(userData);
+        setUser(parsedUser);
+        setCurrentView('dashboard');
+      } catch (error) {
+        // Invalid user data, clear localStorage
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+      }
+    }
+    setIsLoading(false);
   }, []);
 
-  // Show login page first
-  if (showLogin) {
-    return <SignIn />;
+  const handleLoginSuccess = (userData) => {
+    setUser(userData);
+    setCurrentView('dashboard');
+  };
+
+  const handleRegisterSuccess = (userData) => {
+    setUser(userData);
+    setCurrentView('dashboard');
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    setCurrentView('login');
+  };
+
+  const handleSwitchToRegister = () => {
+    setCurrentView('register');
+  };
+
+  const handleSwitchToLogin = () => {
+    setCurrentView('login');
+  };
+
+  if (isLoading) {
+    return <div>Loading...</div>;
   }
 
-  // After login (for now just showing the original content)
+  if (currentView === 'dashboard' && user) {
+    return <Dashboard user={user} onLogout={handleLogout} />;
+  }
+
+  if (currentView === 'register') {
+    return (
+      <Register
+        onSwitchToLogin={handleSwitchToLogin}
+        onRegisterSuccess={handleRegisterSuccess}
+      />
+    );
+  }
+
   return (
-    <div>
-      <h1>React Frontend</h1>
-      <p>Message from backend: {message}</p>
-      <button onClick={() => setShowLogin(true)}>Back to Login</button>
-    </div>
+    <SignIn
+      onLoginSuccess={handleLoginSuccess}
+      onSwitchToRegister={handleSwitchToRegister}
+    />
   );
 }
 

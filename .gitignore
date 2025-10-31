@@ -152,6 +152,7 @@ ehthumbs.db
 # Database files (if using local DBs)
 *.sqlite
 *.db
+database.sqlite
 
 # Backup files
 *.bak
