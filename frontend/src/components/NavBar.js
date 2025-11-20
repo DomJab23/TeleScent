@@ -19,9 +19,9 @@ export default function NavBar() {
 
   const pages = [
     { label: 'Dashboard', path: '/dashboard' },
-    { label: 'Profile', path: '/profile' },
     { label: 'ML Console', path: '/ml' },
-    { label: 'Reports', path: '/reports' },
+    { label: 'Testing', path: '/testing' },
+    { label: 'Emitter', path: '/emitter' },
   ];
 
   const currentPath = pages.some((p) => p.path === location.pathname)

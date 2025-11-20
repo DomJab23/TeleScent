@@ -2,9 +2,9 @@ import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import SignIn from './loginPage/login';
 import Dashboard from './pages/Dashboard';
-import Profile from './pages/Profile';
-import Reports from './pages/Reports';
+import Testing from './pages/Testing';
 import MLConsole from './pages/MLConsole';
+import EmitterSetup from './pages/EmitterSetup';
 import Register from './pages/Register';
 
 function AppRoutes() {
@@ -13,10 +13,10 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={<SignIn />} />
       <Route path="/dashboard" element={<Dashboard />} />
-  <Route path="/profile" element={<Profile />} />
-  <Route path="/register" element={<Register />} />
-      <Route path="/reports" element={<Reports />} />
-  <Route path="/ml" element={<MLConsole />} />
+    <Route path="/register" element={<Register />} />
+        <Route path="/testing" element={<Testing />} />
+      <Route path="/ml" element={<MLConsole />} />
+      <Route path="/emitter" element={<EmitterSetup />} />
   <Route path="/" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );
