@@ -1,0 +1,75 @@
+// API Configuration Helper for Internet Access
+// Place this file at: frontend/src/config/apiConfig.js
+
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+const DEBUG = process.env.REACT_APP_DEBUG === 'true';
+
+export const apiConfig = {
+  baseURL: API_URL,
+  timeout: 10000,
+  withCredentials: true, // Important for cookies/authentication
+};
+
+export const apiClient = {
+  /**
+   * Make an API request with proper error handling
+   * @param {string} endpoint - API endpoint path (e.g., '/api/auth/login')
+   * @param {object} options - Fetch options
+   * @returns {Promise<object>} Response data
+   */
+  async request(endpoint, options = {}) {
+    const url = `${API_URL}${endpoint}`;
+    
+    if (DEBUG) {
+      console.log(`[API] ${options.method || 'GET'} ${url}`, options.body);
+    }
+
+    try {
+      const response = await fetch(url, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...options.headers,
+        },
+        credentials: 'include', // Send cookies with requests
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.message || `HTTP ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      if (DEBUG) {
+        console.error(`[API] Error:`, error);
+      }
+      throw error;
+    }
+  },
+
+  // Helper methods
+  get(endpoint) {
+    return this.request(endpoint, { method: 'GET' });
+  },
+
+  post(endpoint, data) {
+    return this.request(endpoint, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  put(endpoint, data) {
+    return this.request(endpoint, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  delete(endpoint) {
+    return this.request(endpoint, { method: 'DELETE' });
+  },
+};
+
+export default apiConfig;
