@@ -46,7 +46,7 @@ router.post('/', async (req, res) => {
       unit: unit || 'unknown',
       timestamp: timestamp || new Date().toISOString(),
       receivedAt: new Date().toISOString(),
-      userId: req.user.id
+      userId: req.user?.id || 'anonymous' // Handle unauthenticated requests
     };
 
     console.log(`📊 Sensor data received:`, dataEntry);
