@@ -18,7 +18,8 @@ const sensorDataStore = {};
  *   "timestamp": "ISO string" (optional)
  * }
  */
-router.post('/', authenticateToken, async (req, res) => {
+// NOTE: Authentication temporarily disabled for GSM testing
+router.post('/', async (req, res) => {
   try {
     const { deviceId, sensorType, value, unit, timestamp } = req.body;
 
