@@ -1,5 +1,5 @@
 version: 2
-authtoken: ${NGROK_AUTH_TOKEN}
+authtoken: 36HvhW2kJBsLK1QBQF1vMjh7wna_cJYWXZTWWFg6PpKEvZi3
 log_level: info
 log_format: json
 
@@ -7,4 +7,3 @@ tunnels:
   backend:
     proto: http
     addr: backend:5000
-    bind_tls: true

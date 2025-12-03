@@ -29,6 +29,10 @@ app.use('/api', (req, res, next) => {
 // Authentication routes
 app.use('/api/auth', authRoutes);
 
+// Sensor data routes (for WiFi and GSM devices)
+const sensorDataRoutes = require('./routes/sensor-data');
+app.use('/api/sensor-data', sensorDataRoutes);
+
 // Serve static files from the React app build directory (after API routes)
 app.use(express.static(path.join(__dirname, '../frontend/build')));
 
