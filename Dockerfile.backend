@@ -1,0 +1,44 @@
+# Use Node.js LTS as base
+FROM node:20-slim
+
+# Install Python and dependencies for ML service
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    python3-venv \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Copy backend package files
+COPY backend/package*.json ./backend/
+
+# Install backend dependencies
+RUN cd backend && npm install --legacy-peer-deps
+
+# Copy ML requirements
+COPY ml/requirements.txt ./ml/
+
+# Create virtual environment and install Python dependencies
+RUN python3 -m venv /app/venv && \
+    /app/venv/bin/pip install --no-cache-dir -r ml/requirements.txt
+
+# Copy backend and ML code
+COPY backend ./backend
+COPY ml ./ml
+
+# Update serve.py to use container's venv
+RUN sed -i '1s|.*|#!/app/venv/bin/python3|' /app/ml/serve.py && \
+    chmod +x /app/ml/serve.py
+
+# Expose backend port
+EXPOSE 5000
+
+# Set environment variables
+ENV NODE_ENV=production
+ENV PORT=5000
+ENV DOCKER_ENV=true
+
+# Start backend server
+CMD ["node", "backend/server.js"]

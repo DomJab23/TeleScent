@@ -1,125 +1,197 @@
-# ML Module - Scent/Smell Classification
+# TeleScent ML - Scent Detection Model
 
-Machine-learning models for real-time scent detection using **strong smell indicators** (gas and VOC sensors).
+Machine learning model to detect scents from Arduino sensor readings.
 
-**Model Approach**: Evidence-based feature selection using gas and VOC channels that directly measure volatile chemicals. This approach is grounded in electronic-nose literature, where these sensors are recognized as critical inputs for odor classification.
+## Overview
 
-**Primary Interface**: Jupyter Notebooks (recommended for exploration)  
-**Alternative**: Python scripts (for automation and CI/CD)
+This module trains a Random Forest classifier to identify different scents based on 10 sensor features from the Arduino e-nose device.
 
-## Strong Smell Indicators (Features Used)
+### Sensor Features
+- `temperature` - Temperature reading (°C)
+- `humidity` - Humidity percentage (%)
+- `pressure` - Atmospheric pressure (kPa)
+- `gas` - Gas sensor resistance (kΩ)
+- `voc_raw` - Raw VOC reading
+- `nox_raw` - Raw NOx reading
+- `no2` - NO2 concentration (ppb)
+- `ethanol` - Ethanol concentration (ppm)
+- `voc` - VOC index
+- `co_h2` - CO/H2 concentration (ppm)
 
-These features directly measure volatile chemicals and form the basis for predictions:
+## Setup
 
-| Feature | Description | Importance |
-|---------|-------------|-----------|
-| `gas_bme` | Combined gas signal from Bosch-style sensor | Broad odor response |
-| `srawVoc` | Raw VOC reading | Primary smell marker |
-| `VOC_multichannel` | Multi-channel VOC pattern | Odor fingerprint |
-| `COandH2` | Carbon monoxide & hydrogen | Combustion/smoke odors |
-| `srawNox` | Nitrogen oxides | Exhaust/pollution smells |
-| `NO2` | Nitrogen dioxide | Exhaust/pollution smells |
-| `ethanol` | Ethanol concentration | Alcohol/solvent/fermentation |
-| `time_s` | Measurement time | Dynamic response (secondary) |
-| `phase` | Experimental phase | Exposure stage (secondary) |
-| `trial_number` | Trial batch | Batch effects (secondary) |
+### Install Dependencies
 
-**Excluded Features**: `pressure_kPa`, `temp_C`, `humidity_pct` (calibration-related, not smell determinants)
-
-## Structure
-
-### Jupyter Notebooks (Interactive - Recommended)
-- `smell_detection_training.ipynb` - End-to-end training (EDA, preprocessing, tuning, evaluation)
-- `feature_importance_analysis.ipynb` - Feature importance (permutation & SHAP)
-- `inference_and_deployment.ipynb` - Real-time predictions & API examples
-- `NOTEBOOKS_README.md` - Comprehensive guide for all notebooks
-
-### Python Scripts
-- `train_and_eval.py` - Comprehensive training with model comparison (strong indicators only)
-- `serve.py` - FastAPI server for real-time inference
-- `explore.py` - EDA focusing on strong smell indicators
-- `preprocess.py` - Feature selection and preprocessing
-- `train.py` - Simple training script using strong indicators
-- `evaluate.py` - Model evaluation on test set
-- `requirements.txt` - Python dependencies
-
-### Data & Models
-- `data/` - datasets (e.g., `initial-smell-dataset.csv`)
-- `models/` - saved model artifacts (.joblib files)
-
-## Quick Start
-
-### Setup
-```powershell
+```bash
 cd ml
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
-### Using Jupyter Notebooks (Recommended)
-```powershell
-jupyter notebook
-```
+## Usage
 
-Then open and run in sequence:
-1. **smell_detection_training.ipynb** - Trains all models using strong indicators (~10-15 min)
-2. **feature_importance_analysis.ipynb** - Analyzes feature importance (~5-10 min)
-3. **inference_and_deployment.ipynb** - Tests real-time inference (~5 min)
+### Option 1: Jupyter Notebook (Recommended)
 
-See **NOTEBOOKS_README.md** for detailed guidance.
-
-### Using Python Scripts
-```powershell
-# Explore dataset (focus on strong indicators)
-python explore.py --data data/initial-smell-dataset.csv
-
-# Train and evaluate
-python train_and_eval.py --data data/initial-smell-dataset.csv
-
-# Run FastAPI server for live predictions
-uvicorn serve:app --reload --port 8001
-```
-
-Then POST to `http://localhost:8001/predict` with JSON sensor data.
-
-## Performance
-
-- **Best Model**: HistGradientBoosting (99.89% accuracy)
-- **Training Data**: 9,069 samples, 12 scent classes (balanced)
-- **Features**: 7 strong indicators + 3 secondary context features
-- **All Models**: >99.7% accuracy on hold-out test set
-
-## API Example
+The complete workflow is in `scentdetection.ipynb`:
 
 ```bash
-curl -X POST http://localhost:8001/predict \
-  -H "Content-Type: application/json" \
-  -d '{
-    "gas_bme": 100,
-    "srawVoc": 50,
-    "VOC_multichannel": 200,
-    "COandH2": 75,
-    "srawNox": 40,
-    "NO2": 60,
-    "ethanol": 30,
-    "time_s": 10,
-    "phase": "exposure",
-    "trial_number": 1
-  }'
+jupyter notebook scentdetection.ipynb
 ```
 
-Response:
-```json
-{
-  "scent_id": 3,
-  "confidence": 0.9987,
-  "strong_indicators_used": ["gas_bme", "srawVoc", "VOC_multichannel", "COandH2", "srawNox", "NO2", "ethanol"]
+The notebook includes:
+1. ✅ Data loading and exploration
+2. ✅ Sample data generation (for testing)
+3. ✅ Model training with Random Forest
+4. ✅ Model evaluation and visualization
+5. ✅ Prediction on Arduino sensor data
+6. ✅ Model saving and deployment code
+
+**Run all cells** to:
+- Generate sample training data
+- Train the model
+- Evaluate performance
+- Test predictions
+- Save model artifacts to `ml/model/`
+
+### Option 2: Python Scripts
+
+#### Training
+
+```bash
+# Train with default data path (ml/data/sensor_readings.csv)
+python train_model.py
+
+# Train with custom data
+python train_model.py --data /path/to/your/data.csv --out ./model
+```
+
+#### Prediction
+
+Create `predict_scent.py` from the notebook (cell 11), then:
+
+```bash
+# Predict from command line
+python predict_scent.py '{"temperature":24.18,"humidity":33.92,"pressure":100.95,"gas":1.15,"voc_raw":24218,"nox_raw":14243,"no2":788,"ethanol":913,"voc":889,"co_h2":513}'
+```
+
+## Master Dataset
+
+The project includes `master_dataset1.csv` with **9,070 real sensor readings**:
+
+- **12 scents**: apple, banana, coconut, coffee, grape, icecream, lavender, lemon, mango, melon, orange, pineapple
+- **4 phases**: 
+  - `baseline` - Initial state before scent (1,500 samples)
+  - `exposure` - Scent getting stronger (4,440 samples)
+  - `recovery` - Scent dissipating (2,997 samples)
+  - `outside_protocol` - Additional measurements (132 samples)
+
+See `DATASET_README.md` for detailed documentation.
+
+### Dataset Format
+
+```csv
+sample_id,trial_number,scent_id,scent_name,phase,time_s,temp_C,humidity_pct,pressure_kPa,gas_bme,srawVoc,srawNox,NO2,ethanol,VOC_multichannel,COandH2
+1,1,7,apple,baseline,0,23.48,32.58,100.94,113.87,30646,14583,223,371,394,855
+1,1,7,apple,exposure,30.375,23.46,32.61,100.94,100.06,30763,14581,219,370,391,931
+...
+```
+
+## Model Files
+
+After training, these files are created in `ml/model/`:
+
+- `scent_pipeline.joblib` - Complete ML pipeline (preprocessing + model)
+- `label_encoder.joblib` - Encoder for scent labels
+- `metrics.json` - Model performance metrics
+
+## Integration with Backend
+
+### Node.js Integration
+
+```javascript
+const { exec } = require('child_process');
+
+function predictScent(sensorData) {
+  return new Promise((resolve, reject) => {
+    const cmd = `python ml/predict_scent.py '${JSON.stringify(sensorData)}'`;
+    exec(cmd, (error, stdout, stderr) => {
+      if (error) return reject(error);
+      const prediction = JSON.parse(stdout);
+      resolve(prediction);
+    });
+  });
 }
+
+// Usage in sensor-data route
+router.post('/api/sensor-data', async (req, res) => {
+  const sensorData = req.body;
+  
+  // Predict scent
+  const prediction = await predictScent(sensorData);
+  console.log(`Detected scent: ${prediction.scent} (${prediction.confidence}% confidence)`);
+  
+  // Store data with prediction
+  // ... your storage logic
+});
 ```
 
-## References
+## Quick Start
 
-- Electronic-nose and gas-sensor literature: VOC and gas channels are critical inputs for odor classification
-- Scikit-learn, FastAPI, pandas, joblib for implementation
-- SHAP for feature interpretation (optional)
+1. **Open the notebook and train on master dataset**:
+   ```bash
+   cd ml
+   jupyter notebook scentdetection.ipynb
+   # Run all cells - will use master_dataset1.csv automatically
+   ```
+
+2. **Test prediction**:
+   ```bash
+   python predict_scent.py '{"temperature":24.18,"humidity":33.92,"pressure":100.95,"gas":1.15,"voc_raw":24218,"nox_raw":14243,"no2":788,"ethanol":913,"voc":889,"co_h2":513}'
+   ```
+
+3. **Integrate with backend** - The model is ready to classify live Arduino data
+
+4. **Optional**: Add more data to `master_dataset1.csv` and retrain
+
+## Model Performance
+
+Check `ml/model/metrics.json` for:
+- Overall accuracy across 12 scents
+- Per-scent precision, recall, F1-score
+- Confusion matrix
+- Performance by phase (baseline/exposure/recovery)
+
+Expected performance with master dataset: **85-95% accuracy**
+
+Best performance during **exposure phase** when sensor response is strongest.
+
+## Tips for Better Results
+
+1. **Collect diverse data** - Multiple samples per scent in different conditions
+2. **Balance classes** - Similar number of samples per scent
+3. **Label consistently** - Use exact same labels for same scents
+4. **Clean environment** - Let sensors stabilize between scent samples
+5. **Baseline data** - Include "no_scent" class for ambient air
+
+## Troubleshooting
+
+**Import errors**: Install missing packages
+```bash
+pip install -r requirements.txt
+```
+
+**Model not found**: Run training first
+```bash
+python train_model.py
+```
+
+**Low accuracy**: 
+- Collect more training data
+- Ensure sensors are calibrated
+- Check for overlapping scent profiles
+
+## Next Steps
+
+- Integrate prediction into backend API
+- Deploy model to production
+- Set up continuous model updates with new data
+- Add confidence thresholds for uncertain predictions

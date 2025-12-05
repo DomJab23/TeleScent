@@ -6,6 +6,7 @@ import Testing from './pages/Testing';
 import MLConsole from './pages/MLConsole';
 import EmitterSetup from './pages/EmitterSetup';
 import Register from './pages/Register';
+import SensorData from './pages/SensorData';
 
 function AppRoutes() {
   // Authentication gating disabled for now so all pages are directly accessible
@@ -17,6 +18,7 @@ function AppRoutes() {
         <Route path="/testing" element={<Testing />} />
       <Route path="/ml" element={<MLConsole />} />
       <Route path="/emitter" element={<EmitterSetup />} />
+      <Route path="/sensor-data" element={<SensorData />} />
   <Route path="/" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );

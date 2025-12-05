@@ -19,6 +19,7 @@ export default function NavBar() {
 
   const pages = [
     { label: 'Dashboard', path: '/dashboard' },
+    { label: 'Sensor Data', path: '/sensor-data' },
     { label: 'ML Console', path: '/ml' },
     { label: 'Testing', path: '/testing' },
     { label: 'Emitter', path: '/emitter' },

@@ -1,0 +1,369 @@
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  Container,
+  Box,
+  Typography,
+  Paper,
+  Grid,
+  Chip,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  LinearProgress,
+  Card,
+  CardContent,
+  IconButton,
+  Tooltip,
+  Alert,
+  Divider,
+} from '@mui/material';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import SensorsIcon from '@mui/icons-material/Sensors';
+import PsychologyIcon from '@mui/icons-material/Psychology';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import ErrorIcon from '@mui/icons-material/Error';
+
+export default function SensorData() {
+  const [devices, setDevices] = useState({});
+  const [selectedDevice, setSelectedDevice] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const intervalRef = useRef(null);
+
+  // Fetch all devices and their latest data
+  const fetchDevices = async () => {
+    try {
+      const response = await fetch('http://localhost:5000/api/sensor-data', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      
+      const data = await response.json();
+      setDevices(data.devices || {});
+      
+      // Auto-select first device if none selected
+      if (!selectedDevice && Object.keys(data.devices).length > 0) {
+        setSelectedDevice(Object.keys(data.devices)[0]);
+      }
+      
+      setLoading(false);
+      setError(null);
+    } catch (err) {
+      console.error('Error fetching devices:', err);
+      setError(err.message);
+      setLoading(false);
+    }
+  };
+
+  // Initial fetch and auto-refresh
+  useEffect(() => {
+    fetchDevices();
+    
+    if (autoRefresh) {
+      intervalRef.current = setInterval(fetchDevices, 3000); // Refresh every 3 seconds
+    }
+    
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRefresh]);
+
+  // Format timestamp
+  const formatTime = (timestamp) => {
+    return new Date(timestamp).toLocaleTimeString();
+  };
+
+  // Render sensor value with bar
+  const renderSensorBar = (name, value, unit = '') => {
+    const percentage = Math.min(Math.max(value * 10, 0), 100); // Rough scaling
+    
+    return (
+      <Box sx={{ mb: 2 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+          <Typography variant="body2">{name}</Typography>
+          <Typography variant="body2" fontWeight="bold">
+            {value !== null ? `${value.toFixed(2)} ${unit}` : 'N/A'}
+          </Typography>
+        </Box>
+        <LinearProgress 
+          variant="determinate" 
+          value={percentage} 
+          sx={{ height: 6, borderRadius: 1 }}
+        />
+      </Box>
+    );
+  };
+
+  const latestData = selectedDevice ? devices[selectedDevice]?.latestReading : null;
+  const mlPrediction = latestData?.ml_prediction;
+
+  return (
+    <Container maxWidth="xl" sx={{ mt: 3, mb: 6 }}>
+      {/* Header */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Box>
+          <Typography variant="h4" gutterBottom>
+            <SensorsIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+            Real-Time Sensor Data & ML Predictions
+          </Typography>
+          <Typography color="text.secondary">
+            Live sensor readings from Arduino devices with AI-powered scent detection
+          </Typography>
+        </Box>
+        <Box>
+          <Tooltip title={autoRefresh ? 'Auto-refresh ON' : 'Auto-refresh OFF'}>
+            <Chip 
+              label={autoRefresh ? 'Auto-refresh (3s)' : 'Manual refresh'}
+              color={autoRefresh ? 'success' : 'default'}
+              onClick={() => setAutoRefresh(!autoRefresh)}
+              sx={{ mr: 1 }}
+            />
+          </Tooltip>
+          <Tooltip title="Refresh now">
+            <IconButton onClick={fetchDevices} color="primary">
+              <RefreshIcon />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      </Box>
+
+      {/* Error alert */}
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          Failed to fetch device data: {error}
+        </Alert>
+      )}
+
+      {/* Loading state */}
+      {loading && (
+        <Box sx={{ textAlign: 'center', py: 4 }}>
+          <Typography>Loading devices...</Typography>
+          <LinearProgress sx={{ mt: 2 }} />
+        </Box>
+      )}
+
+      {/* No devices */}
+      {!loading && Object.keys(devices).length === 0 && (
+        <Alert severity="info">
+          No devices found. Waiting for Arduino to send sensor data...
+        </Alert>
+      )}
+
+      {/* Device selector */}
+      {!loading && Object.keys(devices).length > 0 && (
+        <>
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h6" gutterBottom>Connected Devices ({Object.keys(devices).length})</Typography>
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+              {Object.keys(devices).map((deviceId) => (
+                <Chip
+                  key={deviceId}
+                  label={deviceId}
+                  color={selectedDevice === deviceId ? 'primary' : 'default'}
+                  onClick={() => setSelectedDevice(deviceId)}
+                  icon={<CheckCircleIcon />}
+                />
+              ))}
+            </Box>
+          </Box>
+
+          {/* Main content */}
+          <Grid container spacing={3}>
+            {/* Left: ML Prediction Card */}
+            <Grid item xs={12} md={4}>
+              <Card sx={{ height: '100%', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                    <PsychologyIcon sx={{ fontSize: 40, color: 'white', mr: 2 }} />
+                    <Typography variant="h5" sx={{ color: 'white', fontWeight: 'bold' }}>
+                      AI Detection
+                    </Typography>
+                  </Box>
+
+                  {mlPrediction && mlPrediction.scent !== 'error' ? (
+                    <>
+                      <Box sx={{ textAlign: 'center', py: 3 }}>
+                        <Typography variant="h2" sx={{ color: 'white', fontWeight: 'bold', mb: 1 }}>
+                          {mlPrediction.scent}
+                        </Typography>
+                        <Typography variant="h6" sx={{ color: 'rgba(255,255,255,0.8)' }}>
+                          Confidence: {(mlPrediction.confidence * 100).toFixed(1)}%
+                        </Typography>
+                        <LinearProgress 
+                          variant="determinate" 
+                          value={mlPrediction.confidence * 100}
+                          sx={{ 
+                            mt: 2, 
+                            height: 10, 
+                            borderRadius: 5,
+                            backgroundColor: 'rgba(255,255,255,0.3)',
+                            '& .MuiLinearProgress-bar': {
+                              backgroundColor: 'white'
+                            }
+                          }}
+                        />
+                      </Box>
+
+                      <Divider sx={{ backgroundColor: 'rgba(255,255,255,0.3)', my: 2 }} />
+
+                      <Typography variant="subtitle2" sx={{ color: 'white', mb: 1 }}>
+                        Top Predictions:
+                      </Typography>
+                      {mlPrediction.top_predictions && Object.entries(mlPrediction.top_predictions).map(([scent, prob]) => (
+                        <Box key={scent} sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                          <Typography sx={{ color: 'rgba(255,255,255,0.9)' }}>{scent}</Typography>
+                          <Typography sx={{ color: 'white', fontWeight: 'bold' }}>
+                            {(prob * 100).toFixed(1)}%
+                          </Typography>
+                        </Box>
+                      ))}
+
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)', display: 'block', mt: 2 }}>
+                        Last updated: {formatTime(mlPrediction.timestamp)}
+                      </Typography>
+                    </>
+                  ) : (
+                    <Box sx={{ textAlign: 'center', py: 3 }}>
+                      <ErrorIcon sx={{ fontSize: 60, color: 'rgba(255,255,255,0.5)', mb: 2 }} />
+                      <Typography sx={{ color: 'white' }}>
+                        {mlPrediction?.error || 'Waiting for prediction...'}
+                      </Typography>
+                    </Box>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Right: Sensor Readings */}
+            <Grid item xs={12} md={8}>
+              <Paper sx={{ p: 3 }}>
+                <Typography variant="h6" gutterBottom>
+                  Sensor Readings - {selectedDevice}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" gutterBottom>
+                  Last update: {latestData ? formatTime(latestData.receivedAt) : 'N/A'}
+                </Typography>
+
+                {latestData ? (
+                  <Box sx={{ mt: 3 }}>
+                    <Grid container spacing={3}>
+                      {/* Environmental Sensors (Not used for ML) */}
+                      <Grid item xs={12} md={6}>
+                        <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                          Environmental (Not used for ML)
+                        </Typography>
+                        {renderSensorBar('Temperature', latestData.temperature, '°C')}
+                        {renderSensorBar('Humidity', latestData.humidity, '%')}
+                        {renderSensorBar('Pressure', latestData.pressure, 'kPa')}
+                      </Grid>
+
+                      {/* Chemical Sensors (Used for ML) */}
+                      <Grid item xs={12} md={6}>
+                        <Typography variant="subtitle2" color="primary" gutterBottom fontWeight="bold">
+                          Chemical Sensors (Used for ML) ✅
+                        </Typography>
+                        {renderSensorBar('Gas Resistance', latestData.gas, 'kΩ')}
+                        {renderSensorBar('Raw VOC', latestData.voc_raw, '')}
+                        {renderSensorBar('Raw NOx', latestData.nox_raw, '')}
+                        {renderSensorBar('NO2', latestData.no2, 'ppb')}
+                        {renderSensorBar('Ethanol', latestData.ethanol, 'ppm')}
+                        {renderSensorBar('VOC Index', latestData.voc, '')}
+                        {renderSensorBar('CO + H2', latestData.co_h2, 'ppm')}
+                      </Grid>
+                    </Grid>
+
+                    {/* Raw data table */}
+                    <Box sx={{ mt: 3 }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Raw Sensor Values
+                      </Typography>
+                      <TableContainer>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Sensor</TableCell>
+                              <TableCell align="right">Value</TableCell>
+                              <TableCell>Used for ML</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            <TableRow>
+                              <TableCell>Temperature</TableCell>
+                              <TableCell align="right">{latestData.temperature?.toFixed(2) || 'N/A'} °C</TableCell>
+                              <TableCell>❌</TableCell>
+                            </TableRow>
+                            <TableRow>
+                              <TableCell>Humidity</TableCell>
+                              <TableCell align="right">{latestData.humidity?.toFixed(2) || 'N/A'} %</TableCell>
+                              <TableCell>❌</TableCell>
+                            </TableRow>
+                            <TableRow>
+                              <TableCell>Pressure</TableCell>
+                              <TableCell align="right">{latestData.pressure?.toFixed(2) || 'N/A'} kPa</TableCell>
+                              <TableCell>❌</TableCell>
+                            </TableRow>
+                            <TableRow sx={{ backgroundColor: 'rgba(25, 118, 210, 0.08)' }}>
+                              <TableCell>Gas Resistance</TableCell>
+                              <TableCell align="right">{latestData.gas?.toFixed(2) || 'N/A'} kΩ</TableCell>
+                              <TableCell>✅</TableCell>
+                            </TableRow>
+                            <TableRow sx={{ backgroundColor: 'rgba(25, 118, 210, 0.08)' }}>
+                              <TableCell>Raw VOC</TableCell>
+                              <TableCell align="right">{latestData.voc_raw || 'N/A'}</TableCell>
+                              <TableCell>✅</TableCell>
+                            </TableRow>
+                            <TableRow sx={{ backgroundColor: 'rgba(25, 118, 210, 0.08)' }}>
+                              <TableCell>Raw NOx</TableCell>
+                              <TableCell align="right">{latestData.nox_raw || 'N/A'}</TableCell>
+                              <TableCell>✅</TableCell>
+                            </TableRow>
+                            <TableRow sx={{ backgroundColor: 'rgba(25, 118, 210, 0.08)' }}>
+                              <TableCell>NO2</TableCell>
+                              <TableCell align="right">{latestData.no2 || 'N/A'} ppb</TableCell>
+                              <TableCell>✅</TableCell>
+                            </TableRow>
+                            <TableRow sx={{ backgroundColor: 'rgba(25, 118, 210, 0.08)' }}>
+                              <TableCell>Ethanol</TableCell>
+                              <TableCell align="right">{latestData.ethanol || 'N/A'} ppm</TableCell>
+                              <TableCell>✅</TableCell>
+                            </TableRow>
+                            <TableRow sx={{ backgroundColor: 'rgba(25, 118, 210, 0.08)' }}>
+                              <TableCell>VOC Index</TableCell>
+                              <TableCell align="right">{latestData.voc || 'N/A'}</TableCell>
+                              <TableCell>✅</TableCell>
+                            </TableRow>
+                            <TableRow sx={{ backgroundColor: 'rgba(25, 118, 210, 0.08)' }}>
+                              <TableCell>CO + H2</TableCell>
+                              <TableCell align="right">{latestData.co_h2 || 'N/A'} ppm</TableCell>
+                              <TableCell>✅</TableCell>
+                            </TableRow>
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    </Box>
+                  </Box>
+                ) : (
+                  <Typography color="text.secondary" sx={{ mt: 2 }}>
+                    No data available for this device
+                  </Typography>
+                )}
+              </Paper>
+            </Grid>
+          </Grid>
+        </>
+      )}
+    </Container>
+  );
+}
