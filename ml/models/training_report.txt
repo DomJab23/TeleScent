@@ -1,0 +1,23 @@
+Model: rf
+  Accuracy: 0.9978
+  Classification report:
+    accuracy: 0.9977949283351709
+    macro avg: {'precision': 0.9977959790415637, 'recall': 0.9977665920954512, 'f1-score': 0.9977720421377189, 'support': 1814.0}
+    weighted avg: {'precision': 0.997813062148204, 'recall': 0.9977949283351709, 'f1-score': 0.9977948421631826, 'support': 1814.0}
+
+
+Model: hgb
+  Accuracy: 0.9989
+  Classification report:
+    accuracy: 0.9988974641675854
+    macro avg: {'precision': 0.9989035087719298, 'recall': 0.9988851603281134, 'f1-score': 0.9988888332059461, 'support': 1814.0}
+    weighted avg: {'precision': 0.998911971218012, 'recall': 0.9988974641675854, 'f1-score': 0.9988992650353199, 'support': 1814.0}
+
+
+Model: mlp
+  Accuracy: 0.9972
+  Classification report:
+    accuracy: 0.9972436604189636
+    macro avg: {'precision': 0.9972551411641687, 'recall': 0.9972147157157601, 'f1-score': 0.9972238327066146, 'support': 1814.0}
+    weighted avg: {'precision': 0.9972690717755055, 'recall': 0.9972436604189636, 'f1-score': 0.9972453812800062, 'support': 1814.0}
+

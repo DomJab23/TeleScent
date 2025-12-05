@@ -1,0 +1,166 @@
+╔══════════════════════════════════════════════════════════════╗
+║         GSM VERIFICATION QUICK REFERENCE                     ║
+╚══════════════════════════════════════════════════════════════╝
+
+📋 HARDWARE CHECKLIST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+☐ SIM800L module connected to ESP32
+   - GPIO 8 (TX) → SIM800L RX
+   - GPIO 9 (RX) → SIM800L TX
+   - GND → GND
+
+☐ Power supply connected (3.7-4.2V, 2A+)
+   ⚠️  NOT USB power! NOT 5V!
+   
+☐ Antenna connected to SIM800L
+
+☐ SIM card inserted
+   - Activated & has data plan
+   - PIN lock disabled
+   - Tested in phone first
+
+☐ 1000µF capacitor near SIM800L VCC (recommended)
+
+
+🔧 COMMANDS TO RUN GSM TEST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Connect ESP32 to computer via USB
+
+# Terminal 1 - Build and upload test
+cd "/home/klaus/TeleScent/TeleScent/embedded /enose"
+export PATH="$HOME/.local/bin:$PATH"
+pio run -e gsm_test -t upload
+
+# Terminal 2 - Monitor output  
+pio device monitor
+
+# Or combined (upload then monitor):
+pio run -e gsm_test -t upload && pio device monitor
+
+
+📊 WHAT TO LOOK FOR IN SERIAL OUTPUT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✓ Test 1: AT Command        → Module responds
+✓ Test 2: Signal Quality    → RSSI > 10 (not 99)
+✓ Test 3: Network Reg        → Status 1 or 5
+✓ Test 4: GPRS Connection    → Data connection active
+✓ Test 5: TCP Connection     → Connected to server
+✓ Test 6: Data Send          → Test data transmitted
+
+
+🚨 COMMON ISSUES & FIXES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Problem: No response from module
+  → Check power supply (needs 2A capability)
+  → Verify RX/TX are crossed (ESP TX → GSM RX)
+  → Look for LED on SIM800L (should blink)
+
+Problem: RSSI = 99 (no signal)
+  → Wait 30-60 seconds after power on
+  → Check antenna is connected
+  → Move to window or outside
+  → Verify SIM works in phone
+
+Problem: Registration failed
+  → Disable PIN on SIM card
+  → Check SIM is activated
+  → Verify carrier supports IoT/M2M devices
+
+Problem: GPRS failed
+  → Check SIM has active data plan
+  → Verify account has credit
+  → May need manual APN configuration
+
+Problem: TCP connection failed
+  → Verify server hostname in test_gsm.cpp:
+    #define HOST_NAME "your-server.com"
+    #define PORT 443
+  → Check server is accessible from internet
+  → Try IP address instead of hostname
+
+
+🔍 HOW TO VERIFY SIGNAL IS BEING SENT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. MODULE LEVEL (Physical verification):
+   • SIM800L LED blinks slowly (every 3s) = Connected
+   • Fast blinking = Searching for network
+   • No blink = No power or failed
+   
+2. AT COMMAND LEVEL (Serial monitor):
+   • AT+CSQ returns signal strength
+   • AT+CREG? shows network registration
+   • AT+CIPSTATUS shows TCP connection state
+   
+3. NETWORK LEVEL (Data transmission):
+   • Test sends JSON data to server
+   • Check server logs for received data
+   • Monitor SIM card data usage online
+   
+4. APPLICATION LEVEL (Your backend):
+   • Login to ngrok dashboard: https://dashboard.ngrok.com
+   • View "Traffic Inspector" for HTTP requests
+   • Or check your backend logs/database
+
+
+📱 SIM800L LED STATUS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Blink Pattern          Status
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Off                    No power / Module failed
+Fast (1s interval)     Searching for network
+Slow (3s interval)     Registered on network ✓
+Very fast              Transmitting data ✓
+
+
+⚡ POWER SUPPLY SOLUTIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Option 1: 3.7V Li-Po Battery (1000mAh+)
+  → Most reliable for testing
+  → Use TP4056 charging module
+
+Option 2: LM2596 Buck Converter
+  → Input: 5V-12V
+  → Output: Set to 4.0V
+  → Connect to wall adapter (2A+)
+
+Option 3: Bench Power Supply
+  → Set to 4.0V
+  → Current limit: 2A+
+
+
+📝 EDIT TEST CONFIGURATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+File: enose/test/test_gsm.cpp
+
+Update these lines:
+  #define HOST_NAME "your-server.ngrok-free.dev"
+  #define PORT 443  // or 80 for HTTP
+
+
+🔄 AFTER SUCCESSFUL TEST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Document your working configuration
+2. Switch back to main program:
+   pio run -e arduino_nano_esp32 -t upload
+3. Uncomment init_GSM() in main.cpp setup()
+4. Update HOST_NAME and PORT in main.h
+5. Integrate GSM sending into your sensor loop
+
+
+📖 DETAILED GUIDE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+See: GSM_TEST_README.md for complete documentation
+
+
+💡 TIPS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Always test SIM card in phone first
+• Wait 60 seconds after power-on before testing
+• Check LED patterns for quick diagnosis
+• Use Serial Monitor at 115200 baud
+• Monitor your carrier's data usage dashboard
+• Keep antenna away from metal/electronics
+• Add 1000µF capacitor for power stability
+
+
+Need help? Check GSM_TEST_README.md for troubleshooting!

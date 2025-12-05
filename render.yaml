@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: telescent-backend
+    runtime: node
+    region: oregon  # Free tier available region
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    rootDir: backend
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: HOST
+        value: 0.0.0.0
+    healthCheckPath: /api

@@ -1,0 +1,16 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8080:5000"
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - JWT_SECRET=telescent-production-secret-change-this
+    volumes:
+      - db_data:/app/backend/
+    restart: unless-stopped
+    container_name: telescent-app
+
+volumes:
+  db_data:

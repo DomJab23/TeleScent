@@ -1,0 +1,7 @@
+# Optional additional packages for model tuning and interpretation
+shap
+xgboost
+
+# Install via:
+# pip install -r ml/requirements.txt
+# pip install -r ml/requirements-extra.txt
