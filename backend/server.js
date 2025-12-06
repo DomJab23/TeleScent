@@ -5,6 +5,7 @@ const cors = require('cors');
 const { initializeDatabase } = require('./models');
 const { testConnection } = require('./models/database');
 const authRoutes = require('./routes/auth');
+const { startPredictionService } = require('./services/predictionService');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -33,6 +34,10 @@ app.use('/api/auth', authRoutes);
 const sensorDataRoutes = require('./routes/sensor-data');
 app.use('/api/sensor-data', sensorDataRoutes);
 
+// Statistics routes
+const statsRoutes = require('./routes/stats');
+app.use('/api/stats', statsRoutes);
+
 // Serve static files from the React app build directory (after API routes)
 app.use(express.static(path.join(__dirname, '../frontend/build')));
 
@@ -60,4 +65,7 @@ app.use((req, res) => {
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   startServer();
+  
+  // Start the prediction service (checks for new sensor data every 5 seconds)
+  startPredictionService(5000);
 });

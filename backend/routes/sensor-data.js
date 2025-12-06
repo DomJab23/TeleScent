@@ -1,68 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
-const { spawn } = require('child_process');
-const path = require('path');
-
-// Store sensor data in memory (for now - you can add database storage later)
-const sensorDataStore = {};
-
-/**
- * Call Python ML model for scent prediction
- * @param {Object} sensorReading - Sensor data in Arduino format
- * @returns {Promise<Object>} - Prediction result
- */
-async function getPrediction(sensorReading) {
-  return new Promise((resolve, reject) => {
-    const pythonScript = path.join(__dirname, '../../ml/serve.py');
-    // Detect if running in Docker and use appropriate Python path
-    const isDocker = process.env.DOCKER_ENV === 'true';
-    const pythonPath = isDocker ? '/app/venv/bin/python3' : '/home/klaus/TeleScent/.venv/bin/python3';
-    const python = spawn(pythonPath, [pythonScript]);
-    
-    let outputData = '';
-    let errorData = '';
-    
-    // Send sensor data to Python script via stdin
-    python.stdin.write(JSON.stringify(sensorReading));
-    python.stdin.end();
-    
-    // Collect output
-    python.stdout.on('data', (data) => {
-      outputData += data.toString();
-    });
-    
-    python.stderr.on('data', (data) => {
-      errorData += data.toString();
-    });
-    
-    python.on('close', (code) => {
-      if (code !== 0) {
-        console.error('❌ Python prediction error (exit code ' + code + '):');
-        console.error('   stderr:', errorData);
-        console.error('   stdout:', outputData);
-        resolve({
-          predicted_scent: 'error',
-          confidence: 0.0,
-          error: 'Prediction service unavailable'
-        });
-      } else {
-        try {
-          const result = JSON.parse(outputData);
-          resolve(result);
-        } catch (e) {
-          console.error('❌ Failed to parse prediction:', e);
-          console.error('   Output was:', outputData);
-          resolve({
-            predicted_scent: 'error',
-            confidence: 0.0,
-            error: 'Invalid prediction response'
-          });
-        }
-      }
-    });
-  });
-}
+const { sensorDataStore, predictionStore } = require('../services/dataStore');
 
 /**
  * POST /api/sensor-data
@@ -140,29 +79,7 @@ router.post('/', async (req, res) => {
       no2: dataEntry.no2
     });
 
-    // Get ML prediction for scent detection
-    let prediction = null;
-    try {
-      prediction = await getPrediction(req.body);
-      console.log(`🤖 ML Prediction: ${prediction.predicted_scent} (${(prediction.confidence * 100).toFixed(1)}%)`);
-      
-      // Add prediction to data entry
-      dataEntry.ml_prediction = {
-        scent: prediction.predicted_scent,
-        confidence: prediction.confidence,
-        top_predictions: prediction.top_predictions,
-        timestamp: new Date().toISOString()
-      };
-    } catch (error) {
-      console.error('⚠️  ML prediction failed:', error.message);
-      dataEntry.ml_prediction = {
-        scent: 'error',
-        confidence: 0.0,
-        error: error.message
-      };
-    }
-
-    // Store the data (grouped by device)
+    // Store the data (grouped by device) - prediction happens elsewhere
     if (!sensorDataStore[deviceId]) {
       sensorDataStore[deviceId] = [];
     }
@@ -173,11 +90,10 @@ router.post('/', async (req, res) => {
       sensorDataStore[deviceId].shift();
     }
 
-    // Send acknowledgment with prediction
+    // Send acknowledgment
     res.status(200).json({
       message: 'Sensor data received successfully',
-      data: dataEntry,
-      ml_prediction: dataEntry.ml_prediction
+      data: dataEntry
     });
 
   } catch (error) {
@@ -186,6 +102,66 @@ router.post('/', async (req, res) => {
       message: 'Internal server error',
       error: error.message
     });
+  }
+});
+
+/**
+ * GET /api/sensor-data/emitter
+ * Get emitter control for the most recent prediction (any device)
+ * Returns format: {"0":0,"1":0,"2":255,"3":0,"4":0,"5":0,"6":0,"7":0}
+ */
+router.get('/emitter', async (req, res) => {
+  try {
+    // Find the most recently updated prediction
+    let latestPrediction = null;
+    let latestTime = null;
+    
+    Object.keys(predictionStore).forEach(deviceId => {
+      const prediction = predictionStore[deviceId];
+      if (prediction && prediction.timestamp) {
+        const predictionTime = new Date(prediction.timestamp);
+        
+        if (!latestTime || predictionTime > latestTime) {
+          latestTime = predictionTime;
+          latestPrediction = prediction;
+        }
+      }
+    });
+    
+    // If no prediction found, return all zeros
+    if (!latestPrediction || !latestPrediction.emitter_control) {
+      return res.json({"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"6":0,"7":0});
+    }
+    
+    // Return the emitter control
+    res.json(latestPrediction.emitter_control);
+    
+  } catch (error) {
+    console.error('Error getting emitter control:', error);
+    res.json({"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"6":0,"7":0});
+  }
+});
+
+/**
+ * GET /api/sensor-data/:deviceId/emitter
+ * Get emitter control for latest prediction
+ * Returns format: {"0":0,"1":0,"2":255,"3":0,"4":0,"5":0,"6":0,"7":0}
+ */
+router.get('/:deviceId/emitter', async (req, res) => {
+  try {
+    const { deviceId } = req.params;
+    const prediction = predictionStore[deviceId];
+    
+    if (!prediction || !prediction.emitter_control) {
+      return res.json({"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"6":0,"7":0});
+    }
+    
+    // Return just the emitter control object
+    res.json(prediction.emitter_control);
+    
+  } catch (error) {
+    console.error('Error getting emitter control:', error);
+    res.json({"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"6":0,"7":0});
   }
 });
 
@@ -254,3 +230,4 @@ router.get('/', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.sensorDataStore = sensorDataStore;
