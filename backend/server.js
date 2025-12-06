@@ -34,7 +34,14 @@ const sensorDataRoutes = require('./routes/sensor-data');
 app.use('/api/sensor-data', sensorDataRoutes);
 
 // Serve static files from the React app build directory (after API routes)
-app.use(express.static(path.join(__dirname, '../frontend/build')));
+const fs = require('fs');
+const buildPath = path.join(__dirname, '../frontend/build');
+if (fs.existsSync(buildPath)) {
+  app.use(express.static(buildPath));
+  console.log('✅ Serving frontend build files');
+} else {
+  console.log('⚠️  Frontend build not found. Run "npm run build" in frontend directory.');
+}
 
 // Initialize database
 async function startServer() {
@@ -51,9 +58,17 @@ async function startServer() {
   }
 }
 
-// Catch all handler: send back React's index.html file for any non-API routes
+// Catch all handler: send back React's index.html file for any non-API routes (only if build exists)
 app.use((req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/build/index.html'));
+  const indexPath = path.join(__dirname, '../frontend/build/index.html');
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.status(404).json({ 
+      message: 'Frontend not built. API is available at /api endpoints.',
+      apiEndpoints: ['/api', '/api/auth', '/api/sensor-data']
+    });
+  }
 });
 
 // Start server

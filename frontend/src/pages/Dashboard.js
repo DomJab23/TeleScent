@@ -17,6 +17,7 @@ import {
   Alert,
 } from '@mui/material';
 import { Link as RouterLink } from 'react-router-dom';
+import { apiClient } from '../config/apiConfig';
 
 function StatusChip({ label, online = true }) {
   return (
@@ -30,33 +31,76 @@ function StatusChip({ label, online = true }) {
 }
 
 export default function Dashboard() {
-  // Placeholder data — replace these with live values from your backend or web sockets
+  // Real-time data from backend
+  const [devices, setDevices] = useState({});
+  const [recentPredictions, setRecentPredictions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const intervalRef = useRef(null);
+
+  // Calculate system status from real data
   const systemStatus = {
-    devicesConnected: 3,
-    enose: true,
+    devicesConnected: Object.keys(devices).length,
+    enose: Object.keys(devices).length > 0,
     emitter: false,
-    mlModel: 'v1.2.0',
+    mlModel: 'v1.0 (Random Forest)',
   };
 
+  // Get latest readings from first device
+  const latestDevice = Object.values(devices)[0];
+  const latestReading = latestDevice?.latestReading;
+  const mlPrediction = latestReading?.ml_prediction;
+
   const readings = {
-    odorIntensity: 72, // percent
-    classificationConfidence: 88, // percent
+    odorIntensity: latestReading ? Math.round((latestReading.gas || 0) * 10) : 0,
+    classificationConfidence: mlPrediction ? Math.round(mlPrediction.confidence * 100) : 0,
     sensors: [
-      { name: 'Sensor A', value: 0.76 },
-      { name: 'Sensor B', value: 0.42 },
-      { name: 'Sensor C', value: 0.91 },
+      { name: 'Gas (BME)', value: latestReading?.gas || 0 },
+      { name: 'VOC Raw', value: (latestReading?.voc_raw || 0) / 1000 },
+      { name: 'NO2', value: (latestReading?.no2 || 0) / 100 },
+      { name: 'Ethanol', value: (latestReading?.ethanol || 0) / 100 },
     ],
   };
 
-  const recent = [
-    { id: 1, smell: 'Coffee', time: '2025-11-13 10:12' },
-    { id: 2, smell: 'Lavender', time: '2025-11-13 09:58' },
-    { id: 3, smell: 'Smoke', time: '2025-11-13 08:44' },
-  ];
+  const errors = Object.keys(devices).length === 0 ? [
+    { id: 1, level: 'warning', text: 'No devices connected' },
+  ] : [];
 
-  const errors = [
-    { id: 1, level: 'warning', text: 'Emitter disconnected' },
-  ];
+  // Fetch devices and predictions from backend
+  const fetchDevices = async () => {
+    try {
+      const data = await apiClient.get('/api/sensor-data');
+      setDevices(data.devices || {});
+      
+      // Extract recent predictions
+      const predictions = [];
+      Object.entries(data.devices || {}).forEach(([deviceId, deviceData]) => {
+        if (deviceData.latestReading?.ml_prediction) {
+          predictions.push({
+            id: predictions.length + 1,
+            smell: deviceData.latestReading.ml_prediction.scent,
+            time: new Date(deviceData.lastUpdate).toLocaleString(),
+            confidence: Math.round(deviceData.latestReading.ml_prediction.confidence * 100)
+          });
+        }
+      });
+      setRecentPredictions(predictions.slice(0, 10));
+      setLoading(false);
+      setError(null);
+    } catch (err) {
+      console.error('Error fetching devices:', err);
+      setError(err.message);
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDevices();
+    intervalRef.current = setInterval(fetchDevices, 3000);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, []);
 
   // Auto-pipeline states
   const [currentDetection, setCurrentDetection] = useState(null);
@@ -64,6 +108,13 @@ export default function Dashboard() {
   const [autoStatus, setAutoStatus] = useState('idle');
   const timersRef = useRef([]);
   const [processingProgress, setProcessingProgress] = useState(0);
+
+  // Set current detection from latest prediction
+  useEffect(() => {
+    if (recentPredictions.length > 0 && !currentDetection) {
+      setCurrentDetection(recentPredictions[0]);
+    }
+  }, [recentPredictions, currentDetection]);
 
   useEffect(() => {
     return () => {
@@ -289,13 +340,26 @@ export default function Dashboard() {
           <Grid item xs={12} md={4} sx={{ display: 'flex', flexDirection: 'column' }}>
             <Paper sx={{ p: 2, mb: 2, flex: 1, display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
               <Typography variant="h6">Recent detected smells</Typography>
-              <List>
-                {recent.map((r) => (
-                  <ListItem key={r.id} secondaryAction={<Typography variant="caption">{r.time}</Typography>}>
-                    <ListItemText primary={r.smell} />
-                  </ListItem>
-                ))}
-              </List>
+              {loading ? (
+                <Box sx={{ textAlign: 'center', py: 3 }}>
+                  <CircularProgress size={24} />
+                </Box>
+              ) : recentPredictions.length === 0 ? (
+                <Alert severity="info" sx={{ mt: 2 }}>No detections yet. Waiting for sensor data...</Alert>
+              ) : (
+                <List>
+                  {recentPredictions.map((r) => (
+                    <ListItem key={r.id} secondaryAction={
+                      <Box sx={{ textAlign: 'right' }}>
+                        <Typography variant="caption" display="block">{r.time}</Typography>
+                        <Chip label={`${r.confidence}%`} size="small" color="primary" />
+                      </Box>
+                    }>
+                      <ListItemText primary={r.smell} />
+                    </ListItem>
+                  ))}
+                </List>
+              )}
             </Paper>
 
             <Paper sx={{ p: 2 }}>

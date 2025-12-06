@@ -72,4 +72,31 @@ export const apiClient = {
   },
 };
 
+// ML-specific API helpers
+export const mlAPI = {
+  /**
+   * Get all sensor data with ML predictions
+   */
+  getAllDevices() {
+    return apiClient.get('/api/sensor-data');
+  },
+
+  /**
+   * Get sensor data for specific device
+   * @param {string} deviceId - Device identifier
+   * @param {number} limit - Number of recent readings to fetch
+   */
+  getDeviceData(deviceId, limit = 10) {
+    return apiClient.get(`/api/sensor-data/${deviceId}?limit=${limit}`);
+  },
+
+  /**
+   * Submit sensor data (used by Arduino devices)
+   * @param {object} sensorData - Sensor reading object
+   */
+  submitSensorData(sensorData) {
+    return apiClient.post('/api/sensor-data', sensorData);
+  },
+};
+
 export default apiConfig;

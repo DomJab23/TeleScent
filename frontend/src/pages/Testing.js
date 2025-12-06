@@ -14,16 +14,19 @@ import {
   Divider,
   IconButton,
   Tooltip,
+  Alert,
 } from '@mui/material';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import StopIcon from '@mui/icons-material/Stop';
 import DeleteIcon from '@mui/icons-material/Delete';
+import { apiClient } from '../config/apiConfig';
 
-// Testing console for TCP/GSM module (mocked)
+// Testing console for backend API and sensor data submission
 export default function TestingConsole() {
-  const [address, setAddress] = useState('192.168.0.10');
+  const [address, setAddress] = useState('http://localhost:5000');
   const [port, setPort] = useState('5000');
   const [connected, setConnected] = useState(false);
+  const [backendStatus, setBackendStatus] = useState('unknown');
 
   const [sendText, setSendText] = useState('');
   const [lastMessage, setLastMessage] = useState(null);
@@ -53,6 +56,20 @@ export default function TestingConsole() {
     if (entry.dir === 'in') setLastMessage(entry);
   }, []);
 
+  // Test backend connection
+  const testBackendConnection = async () => {
+    try {
+      const data = await apiClient.get('/api');
+      setBackendStatus('connected');
+      pushLog({ dir: 'in', text: `✓ Backend connected: ${data.message}`, ts: timestamp() });
+      return true;
+    } catch (err) {
+      setBackendStatus('error');
+      pushLog({ dir: 'in', text: `✗ Backend error: ${err.message}`, ts: timestamp() });
+      return false;
+    }
+  };
+
   // Mock receiving a message from device (stable reference)
   const receiveFromDevice = useCallback((text) => {
     const entry = { dir: 'in', text, ts: timestamp() };
@@ -81,6 +98,33 @@ export default function TestingConsole() {
     };
   }, [connected, receiveFromDevice]);
 
+  // Send test sensor data to backend
+  const sendTestSensorData = async () => {
+    const testData = {
+      device_id: 'test_device_001',
+      timestamp: Date.now(),
+      temperature: 20 + Math.random() * 10,
+      humidity: 30 + Math.random() * 40,
+      pressure: 100 + Math.random() * 2,
+      gas: 50 + Math.random() * 100,
+      voc_raw: 20000 + Math.random() * 10000,
+      nox_raw: 10000 + Math.random() * 5000,
+      no2: 500 + Math.random() * 500,
+      ethanol: 500 + Math.random() * 500,
+      voc: 500 + Math.random() * 500,
+      co_h2: 300 + Math.random() * 300
+    };
+    
+    pushLog({ dir: 'out', text: `Sending test sensor data: ${JSON.stringify(testData, null, 2)}`, ts: timestamp() });
+    
+    try {
+      const response = await apiClient.post('/api/sensor-data', testData);
+      pushLog({ dir: 'in', text: `✓ Response: ${JSON.stringify(response, null, 2)}`, ts: timestamp() });
+    } catch (err) {
+      pushLog({ dir: 'in', text: `✗ Error: ${err.message}`, ts: timestamp() });
+    }
+  };
+
   // Mock sending — immediately logs the outgoing message and optionally simulates a response
   function sendToDevice(text) {
     if (!text) return;
@@ -105,8 +149,28 @@ export default function TestingConsole() {
     setSendText('');
   }
 
+  async function handleConnect() {
+    pushLog({ dir: 'out', text: `Testing connection to backend at ${address}`, ts: timestamp() });
+    const success = await testBackendConnection();
+    if (success) {
+      setConnected(true);
+      pushLog({ dir: 'in', text: '✓ Connected to backend API', ts: timestamp() });
+    }
+  }
+
+  function handleDisconnect() {
+    pushLog({ dir: 'out', text: 'Disconnecting...', ts: timestamp() });
+    setConnected(false);
+    setBackendStatus('unknown');
+    pushLog({ dir: 'in', text: 'Disconnected', ts: timestamp() });
+  }
+
   function handleConnectToggle() {
-    setConnected((c) => !c);
+    if (connected) {
+      handleDisconnect();
+    } else {
+      handleConnect();
+    }
   }
 
   function handleClearLog() {
@@ -117,16 +181,16 @@ export default function TestingConsole() {
   return (
     <Container component="main" maxWidth="lg" sx={{ mt: 3, mb: 6 }}>
       <Typography variant="h4" gutterBottom>
-        TCP / GSM Module Test Console
+        Backend API Test Console
       </Typography>
       <Typography color="text.secondary" sx={{ mb: 2 }}>
-        Small serial-console style tool to send a message and view the most recent response. All network behavior is mocked locally.
+        Test backend API connection, send sensor data, and view responses in real-time.
       </Typography>
 
       <Paper sx={{ p: 2, mb: 2 }} elevation={2}>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">
           <TextField
-            label="Address"
+            label="Backend URL"
             size="small"
             value={address}
             onChange={(e) => setAddress(e.target.value)}
@@ -142,14 +206,21 @@ export default function TestingConsole() {
           />
 
           <Chip
-            label={connected ? `Connected (${address}:${port})` : 'Disconnected'}
+            label={connected ? `Connected` : 'Disconnected'}
             color={connected ? 'success' : 'default'}
             sx={{ ml: 1 }}
           />
+          {backendStatus !== 'unknown' && (
+            <Chip 
+              label={`Backend: ${backendStatus}`} 
+              color={backendStatus === 'connected' ? 'success' : 'error'}
+              size="small"
+            />
+          )}
 
           <Box sx={{ flex: 1 }} />
 
-          <Tooltip title={connected ? 'Disconnect' : 'Connect'}>
+          <Tooltip title={connected ? 'Disconnect' : 'Test Connection'}>
             <Button
               variant={connected ? 'outlined' : 'contained'}
               color={connected ? 'warning' : 'primary'}
@@ -162,12 +233,25 @@ export default function TestingConsole() {
         </Stack>
       </Paper>
 
+      {/* Quick test buttons */}
+      <Paper sx={{ p: 2, mb: 2 }} elevation={1}>
+        <Typography variant="subtitle1" gutterBottom>Quick Tests</Typography>
+        <Stack direction="row" spacing={2}>
+          <Button variant="contained" onClick={sendTestSensorData} disabled={!connected}>
+            Send Test Sensor Data
+          </Button>
+          <Button variant="outlined" onClick={testBackendConnection}>
+            Test API Health
+          </Button>
+        </Stack>
+      </Paper>
+
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '2fr 1fr' }, gap: 2 }}>
         {/* Left: Console + send area */}
         <Box>
           <Paper sx={{ p: 2, mb: 2 }} elevation={1}>
             <Typography variant="subtitle1" sx={{ mb: 1 }}>
-              Last message from device
+              Last Response from Backend
             </Typography>
             <Paper variant="outlined" sx={{ p: 2, minHeight: 120, bgcolor: 'background.paper' }}>
               {lastMessage ? (

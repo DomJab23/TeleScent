@@ -25,6 +25,7 @@ import SensorsIcon from '@mui/icons-material/Sensors';
 import PsychologyIcon from '@mui/icons-material/Psychology';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
+import { apiClient } from '../config/apiConfig';
 
 export default function SensorData() {
   const [devices, setDevices] = useState({});
@@ -37,17 +38,7 @@ export default function SensorData() {
   // Fetch all devices and their latest data
   const fetchDevices = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/sensor-data', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`
-        }
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      
-      const data = await response.json();
+      const data = await apiClient.get('/api/sensor-data');
       setDevices(data.devices || {});
       
       // Auto-select first device if none selected
