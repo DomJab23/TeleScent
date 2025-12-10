@@ -188,5 +188,8 @@ function startPredictionService(intervalMs = 5000) {
 
 module.exports = {
   startPredictionService,
-  processSensorData
+  processSensorData,
+  // Exported for testing
+  scentToEmitterControl,
+  getPrediction
 };

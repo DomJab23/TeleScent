@@ -92,11 +92,16 @@ app.use((req, res) => {
   }
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  startServer();
-  
-  // Start the prediction service (checks for new sensor data every 5 seconds)
-  startPredictionService(5000);
-});
+// Start server unless running tests
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+    startServer();
+    
+    // Start the prediction service (checks for new sensor data every 5 seconds)
+    startPredictionService(5000);
+  });
+}
+
+// Export app for testing
+module.exports = app;

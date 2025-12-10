@@ -1,30 +1,40 @@
 const express = require('express');
 const { User } = require('../models');
 const { generateToken, authenticateToken } = require('../middleware/auth');
+const { Op } = require('sequelize');
 const router = express.Router();
 
 // Register new user
 router.post('/register', async (req, res) => {
   try {
-    const { email, password, firstName, lastName } = req.body;
+    const { email, password, firstName, lastName, username } = req.body;
+    const finalUsername = username || (email ? email.split('@')[0] : null);
 
     // Validate required fields
-    if (!email || !password) {
+    if (!email || !password || !finalUsername) {
       return res.status(400).json({ 
-        message: 'Email and password are required' 
+        message: 'Email, password, and username are required' 
       });
     }
 
-    // Check if user already exists
-    const existingUser = await User.findOne({ where: { email } });
+    // Check if user already exists by email or username
+    const existingUser = await User.findOne({
+      where: {
+        [Op.or]: [
+          { email },
+          { username: finalUsername }
+        ]
+      }
+    });
     if (existingUser) {
       return res.status(400).json({ 
-        message: 'User with this email already exists' 
+        message: 'User with this email or username already exists' 
       });
     }
 
     // Create new user
     const user = await User.create({
+      username: finalUsername,
       email,
       password,
       firstName,
