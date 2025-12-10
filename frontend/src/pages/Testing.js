@@ -31,18 +31,6 @@ export default function TestingConsole() {
   const [lastMessage, setLastMessage] = useState(null);
   const [log, setLog] = useState([]); // {dir: 'in'|'out', text, ts}
 
-  const incomingIntervalRef = useRef(null);
-  const simulatedResponseTimeoutRef = useRef(null);
-
-  useEffect(() => {
-    return () => {
-      // cleanup timers
-      if (incomingIntervalRef.current) clearInterval(incomingIntervalRef.current);
-      if (simulatedResponseTimeoutRef.current) clearTimeout(simulatedResponseTimeoutRef.current);
-    };
-  }, []);
-  
-
   function timestamp() {
     return new Date().toLocaleString();
   }
@@ -69,83 +57,28 @@ export default function TestingConsole() {
     }
   };
 
-  // Mock receiving a message from device (stable reference)
-  const receiveFromDevice = useCallback((text) => {
-    const entry = { dir: 'in', text, ts: timestamp() };
-    pushLog(entry);
-  }, [pushLog]);
-
-  // When connected, start a gentle simulated incoming-message generator
-  useEffect(() => {
-    if (connected) {
-      incomingIntervalRef.current = setInterval(() => {
-        const simulated = `+OK MOCK MSG ${Math.floor(Math.random() * 9000 + 1000)}`;
-        receiveFromDevice(simulated);
-      }, 14000 + Math.floor(Math.random() * 6000));
-    } else {
-      if (incomingIntervalRef.current) {
-        clearInterval(incomingIntervalRef.current);
-        incomingIntervalRef.current = null;
-      }
-    }
-
-    return () => {
-      if (incomingIntervalRef.current) {
-        clearInterval(incomingIntervalRef.current);
-        incomingIntervalRef.current = null;
-      }
-    };
-  }, [connected, receiveFromDevice]);
-
-  // Send test sensor data to backend
-  const sendTestSensorData = async () => {
-    const testData = {
-      device_id: 'test_device_001',
-      timestamp: Date.now(),
-      temperature: 20 + Math.random() * 10,
-      humidity: 30 + Math.random() * 40,
-      pressure: 100 + Math.random() * 2,
-      gas: 50 + Math.random() * 100,
-      voc_raw: 20000 + Math.random() * 10000,
-      nox_raw: 10000 + Math.random() * 5000,
-      no2: 500 + Math.random() * 500,
-      ethanol: 500 + Math.random() * 500,
-      voc: 500 + Math.random() * 500,
-      co_h2: 300 + Math.random() * 300
-    };
-    
-    pushLog({ dir: 'out', text: `Sending test sensor data: ${JSON.stringify(testData, null, 2)}`, ts: timestamp() });
+  // Send custom JSON data to backend
+  const sendCustomData = async (jsonData) => {
+    pushLog({ dir: 'out', text: `Sending data: ${JSON.stringify(jsonData, null, 2)}`, ts: timestamp() });
     
     try {
-      const response = await apiClient.post('/api/sensor-data', testData);
+      const response = await apiClient.post('/api/sensor-data', jsonData);
       pushLog({ dir: 'in', text: `✓ Response: ${JSON.stringify(response, null, 2)}`, ts: timestamp() });
     } catch (err) {
       pushLog({ dir: 'in', text: `✗ Error: ${err.message}`, ts: timestamp() });
     }
   };
 
-  // Mock sending — immediately logs the outgoing message and optionally simulates a response
-  function sendToDevice(text) {
-    if (!text) return;
-    const out = { dir: 'out', text, ts: timestamp() };
-    pushLog(out);
-
-    // simulate a response after a short delay when connected, otherwise show not connected note
-    if (connected) {
-      simulatedResponseTimeoutRef.current = setTimeout(() => {
-        const resp = `>RESP ${text} | ACK ${Math.floor(Math.random() * 99)}`;
-        receiveFromDevice(resp);
-      }, 600 + Math.floor(Math.random() * 900));
-    } else {
-      // not connected: push a local info message
-      const info = { dir: 'in', text: `(Not connected) cannot deliver: ${text}`, ts: timestamp() };
-      pushLog(info);
-    }
-  }
-
   function handleSend() {
-    sendToDevice(sendText);
-    setSendText('');
+    if (!sendText) return;
+    
+    try {
+      const jsonData = JSON.parse(sendText);
+      sendCustomData(jsonData);
+      setSendText('');
+    } catch (err) {
+      pushLog({ dir: 'in', text: `✗ Invalid JSON: ${err.message}`, ts: timestamp() });
+    }
   }
 
   async function handleConnect() {
@@ -232,12 +165,15 @@ export default function TestingConsole() {
         </Stack>
       </Paper>
 
-      {/* Quick test buttons */}
+      {/* API Test Instructions */}
       <Paper sx={{ p: 2, mb: 2 }} elevation={1}>
-        <Typography variant="subtitle1" gutterBottom>Quick Tests</Typography>
-        <Stack direction="row" spacing={2}>
-          <Button variant="contained" onClick={sendTestSensorData} disabled={!connected}>
-            Send Test Sensor Data
+        <Typography variant="subtitle1" gutterBottom>API Testing</Typography>
+        <Typography variant="body2" color="text.secondary">
+          Use the text field below to send custom JSON data to the backend. Data should match the Arduino sensor format.
+        </Typography>
+        <Stack direction="row" spacing={2} sx={{ mt: 2 }}>
+          <Button variant="outlined" onClick={testBackendConnection}>
+            Test Backend Connection
           </Button>
           <Button variant="outlined" onClick={testBackendConnection}>
             Test API Health

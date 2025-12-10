@@ -54,7 +54,9 @@ const initialCartridges = Array.from({ length: 8 }).map((_, i) => ({
 }));
 
 export default function EmitterSetup() {
-  const [deviceOnline] = useState(true);
+  // Note: This page displays mock data. Emitter cartridge management 
+  // is not yet connected to the backend.
+  const [deviceOnline] = useState(false); // Set to false since not connected
   const [lastUpdated, setLastUpdated] = useState(new Date());
 
   const [smells, setSmells] = useState(initialSmells);
@@ -167,6 +169,15 @@ export default function EmitterSetup() {
           </Box>
         </Box>
       </Box>
+
+      {/* Not Connected Warning */}
+      <Alert severity="warning" sx={{ mb: 3 }}>
+        <Typography variant="subtitle2" gutterBottom>⚠️ Emitter Setup Not Connected</Typography>
+        <Typography variant="body2">
+          This page displays mock/placeholder data. Emitter cartridge management and smell database features are not yet implemented in the backend. 
+          The emitter control values are automatically generated from ML predictions (see Dashboard).
+        </Typography>
+      </Alert>
 
       <Grid container spacing={2} alignItems="flex-start">
         {/* Left: Smells database */}

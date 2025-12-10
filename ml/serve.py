@@ -1,10 +1,10 @@
-#!/home/klaus/TeleScent/.venv/bin/python3
+#!/usr/bin/env python3
 """
 ML Inference Service for TeleScent
 Loads trained scent detection model and provides predictions for real-time sensor data
 
 NOTE: Run this from the ml/ directory or ensure PYTHONPATH includes ml/
-NOTE: Uses virtual environment at /home/klaus/TeleScent/.venv
+NOTE: Requires: pandas, scikit-learn, joblib, numpy
 """
 
 import sys
