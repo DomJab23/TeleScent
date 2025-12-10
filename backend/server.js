@@ -15,6 +15,15 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Special middleware for ngrok to skip browser warning
+app.use((req, res, next) => {
+  // Allow requests without ngrok warning header
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, ngrok-skip-browser-warning');
+  next();
+});
+
 // API routes FIRST - before static files
 app.get('/api', (req, res) => {
   console.log('GET /api called');
