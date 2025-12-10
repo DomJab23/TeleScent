@@ -98,137 +98,87 @@ export default function Dashboard() {
     };
   }, []);
 
-  // Auto-pipeline states
-  const [currentDetection, setCurrentDetection] = useState(null);
-  const [isAutoRunning, setIsAutoRunning] = useState(false);
-  const [autoStatus, setAutoStatus] = useState('idle');
-  const timersRef = useRef([]);
-  const [processingProgress, setProcessingProgress] = useState(0);
-
   // Set current detection from latest prediction
+  const [currentDetection, setCurrentDetection] = useState(null);
+  const [isDetecting, setIsDetecting] = useState(false);
+  const [detectionMessage, setDetectionMessage] = useState('');
+  const [detectionStep, setDetectionStep] = useState(''); // Track current step
+
   useEffect(() => {
-    if (recentPredictions.length > 0 && !currentDetection) {
+    if (recentPredictions.length > 0) {
       setCurrentDetection(recentPredictions[0]);
     }
-  }, [recentPredictions, currentDetection]);
+  }, [recentPredictions]);
 
-  useEffect(() => {
-    return () => {
-      // cleanup timers on unmount
-      timersRef.current.forEach((t) => clearTimeout(t));
-      timersRef.current = [];
-    };
-  }, []);
-
-  // simulate a processing progress while in 'processing' state
-  useEffect(() => {
-    let interval = null;
-    if (autoStatus === 'processing') {
-      setProcessingProgress(0);
-      interval = setInterval(() => {
-        setProcessingProgress((p) => {
-          const next = Math.min(100, p + 8);
-          if (next === 100) {
-            clearInterval(interval);
-          }
-          return next;
-        });
-      }, 180);
-    } else {
-      setProcessingProgress(0);
+  // Complete detection flow: capture → process → predict
+  const startDetection = async () => {
+    setIsDetecting(true);
+    setDetectionMessage('');
+    setDetectionStep('🤖 Processing sensor data with ML model...');
+    
+    try {
+      // Call detection endpoint - no simulation, only real data
+      const response = await apiClient.post('/api/predictions/detect', {
+        deviceId: 'web-interface',
+        simulate: false // Explicitly disable simulation
+      });
+      
+      console.log('Detection complete:', response);
+      
+      setDetectionStep('✅ Analysis complete!');
+      
+      if (response.prediction) {
+        // Update current detection with the new result
+        const newDetection = {
+          id: Date.now(),
+          smell: response.prediction.scent,
+          confidence: Math.round(response.prediction.confidence * 100),
+          time: new Date().toLocaleString()
+        };
+        
+        setCurrentDetection(newDetection);
+        
+        // Add to recent predictions
+        setRecentPredictions(prev => [newDetection, ...prev].slice(0, 10));
+        
+        setDetectionMessage(`✅ Detected: ${response.prediction.scent} (${(response.prediction.confidence * 100).toFixed(1)}% confidence)`);
+      } else {
+        setDetectionMessage('⚠️ Detection completed but no prediction available');
+      }
+      
+      // Refresh device data
+      await fetchDevices();
+      
+    } catch (err) {
+      console.error('Detection error:', err);
+      
+      if (err.message.includes('No sensor data available')) {
+        setDetectionMessage('⚠️ No sensor data available. Please ensure the e-nose Arduino is connected and sending data to POST /api/sensor-data');
+      } else {
+        setDetectionMessage(`❌ Detection failed: ${err.message}`);
+      }
+    } finally {
+      setIsDetecting(false);
+      setDetectionStep('');
+      // Clear message after 8 seconds
+      setTimeout(() => setDetectionMessage(''), 8000);
     }
-
-    return () => clearInterval(interval);
-  }, [autoStatus]);
-
-  function AnimatedDisplay({ status, progress }) {
-    return (
-      <Paper sx={{ p: 2, mb: 2, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-        <Typography variant="h6">Pipeline display</Typography>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 2 }}>
-          {status === 'detecting' && (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <CircularProgress color="primary" />
-              <Box>
-                <Typography>Detecting...</Typography>
-                <Typography variant="caption" color="text.secondary">Scanning sensors for odors</Typography>
-              </Box>
-            </Box>
-          )}
-
-          {status === 'processing' && (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <CircularProgress variant="determinate" value={progress} color="secondary" />
-              <Box>
-                <Typography>Analyzing...</Typography>
-                <Typography variant="caption" color="text.secondary">ML inference in progress — {progress}%</Typography>
-              </Box>
-            </Box>
-          )}
-
-          {status === 'emitting' && (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Box sx={{ width: 40, height: 40, borderRadius: '50%', bgcolor: 'secondary.main', boxShadow: 3, animation: 'pulse 1200ms infinite' }} />
-              <Box>
-                <Typography>Emitting...</Typography>
-                <Typography variant="caption" color="text.secondary">Releasing selected odor pattern</Typography>
-              </Box>
-            </Box>
-          )}
-
-          {status === 'idle' && (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Box sx={{ width: 40, height: 40, borderRadius: '4px', bgcolor: 'grey.300' }} />
-              <Box>
-                <Typography>Idle</Typography>
-                <Typography variant="caption" color="text.secondary">Pipeline ready</Typography>
-              </Box>
-            </Box>
-          )}
-
-          <style>{`@keyframes pulse {0% { transform: scale(1); opacity: 1;}50% { transform: scale(1.3); opacity: 0.6;}100% { transform: scale(1); opacity: 1;}}`}</style>
-        </Box>
-      </Paper>
-    );
-  }
-
-  const startAutoCycle = () => {
-    // single automatic cycle: detecting -> processing -> emitting -> done
-    setIsAutoRunning(true);
-    setAutoStatus('detecting');
-    setCurrentDetection(null);
-
-    const t1 = setTimeout(() => {
-      // detection result (placeholder)
-      const detected = {
-        smell: 'Banana',
-        confidence: 92,
-        time: new Date().toLocaleString(),
-      };
-      setCurrentDetection(detected);
-      setAutoStatus('processing');
-    }, 1200);
-
-    const t2 = setTimeout(() => {
-      // ML processing complete
-      setAutoStatus('emitting');
-    }, 2600);
-
-    const t3 = setTimeout(() => {
-      // emission complete — finish cycle
-      setAutoStatus('idle');
-      setIsAutoRunning(false);
-    }, 4200);
-
-    timersRef.current = [t1, t2, t3];
   };
 
-  const stopAutoCycle = () => {
-    timersRef.current.forEach((t) => clearTimeout(t));
-    timersRef.current = [];
-    setIsAutoRunning(false);
-    setAutoStatus('idle');
+  // Determine system status based on real data
+  const getPipelineStatus = () => {
+    if (loading) return 'loading';
+    if (Object.keys(devices).length === 0) return 'idle';
+    if (recentPredictions.length > 0) {
+      const lastPrediction = recentPredictions[0];
+      const predictionAge = new Date() - new Date(lastPrediction.time);
+      // If prediction is less than 10 seconds old, show as active
+      if (predictionAge < 10000) return 'active';
+    }
+    return 'monitoring';
   };
+
+  const pipelineStatus = getPipelineStatus();
 
   return (
     <Container component="main" maxWidth="lg">
@@ -287,48 +237,137 @@ export default function Dashboard() {
             </Paper>
           </Grid>
 
-          {/* Middle column: Pipeline display, current detection, quick controls */}
+          {/* Middle column: Pipeline status and current detection */}
           <Grid item xs={12} md={4} sx={{ display: 'flex', flexDirection: 'column' }}>
-            <AnimatedDisplay status={autoStatus} progress={processingProgress} />
-
-            <Paper sx={{ p: 2, mb: 2 }}>
-              <Typography variant="h6">Currently detected smell</Typography>
-              <Box sx={{ mt: 1 }}>
-                {currentDetection ? (
-                  <Box>
-                    <Typography variant="subtitle1">{currentDetection.smell}</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Confidence: {currentDetection.confidence}% — {currentDetection.time}
-                    </Typography>
-                    <Typography variant="caption" sx={{ display: 'block', mt: 1 }}>Pipeline: {autoStatus}</Typography>
+            <Paper sx={{ p: 2, mb: 2, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <Typography variant="h6">Pipeline Status</Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 2 }}>
+                {pipelineStatus === 'loading' && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <CircularProgress size={40} color="primary" />
+                    <Box>
+                      <Typography>Loading...</Typography>
+                      <Typography variant="caption" color="text.secondary">Connecting to backend</Typography>
+                    </Box>
                   </Box>
-                ) : (
-                  <Typography color="text.secondary">No smell detected</Typography>
                 )}
+
+                {pipelineStatus === 'idle' && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <Box sx={{ width: 40, height: 40, borderRadius: '4px', bgcolor: 'grey.300' }} />
+                    <Box>
+                      <Typography>Idle</Typography>
+                      <Typography variant="caption" color="text.secondary">No devices connected</Typography>
+                    </Box>
+                  </Box>
+                )}
+
+                {pipelineStatus === 'monitoring' && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <CircularProgress size={40} color="primary" />
+                    <Box>
+                      <Typography>Monitoring</Typography>
+                      <Typography variant="caption" color="text.secondary">Waiting for sensor data</Typography>
+                    </Box>
+                  </Box>
+                )}
+
+                {pipelineStatus === 'active' && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <Box sx={{ width: 40, height: 40, borderRadius: '50%', bgcolor: 'success.main', boxShadow: 3, animation: 'pulse 1200ms infinite' }} />
+                    <Box>
+                      <Typography>Active</Typography>
+                      <Typography variant="caption" color="text.secondary">Processing sensor data</Typography>
+                    </Box>
+                  </Box>
+                )}
+
+                <style>{`@keyframes pulse {0% { transform: scale(1); opacity: 1;}50% { transform: scale(1.3); opacity: 0.6;}100% { transform: scale(1); opacity: 1;}}`}</style>
               </Box>
             </Paper>
 
             <Paper sx={{ p: 2, mb: 2 }}>
-              <Typography variant="h6">Quick controls</Typography>
-              <Stack direction="row" spacing={2} sx={{ mt: 2 }}>
-                <Button variant="contained" color="success" onClick={() => alert('Manual detection not implemented yet')}>Start detection</Button>
-                <Button variant="outlined" color="error" onClick={() => alert('Manual stop not implemented yet')}>Stop</Button>
-                <Button variant="contained" color="secondary" onClick={() => alert('Emit smell action not implemented')}>Emit smell</Button>
-              </Stack>
-              <Box sx={{ mt: 2 }}>
-                {isAutoRunning ? (
-                  <Button variant="contained" color="warning" onClick={stopAutoCycle}>
-                    Stop automatic pipeline
-                  </Button>
+              <Typography variant="h6">Latest Detection</Typography>
+              <Box sx={{ mt: 1 }}>
+                {currentDetection ? (
+                  <Box>
+                    <Typography variant="h5" color="primary.main">{currentDetection.smell}</Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                      Confidence: {currentDetection.confidence}%
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {currentDetection.time}
+                    </Typography>
+                    <LinearProgress 
+                      variant="determinate" 
+                      value={currentDetection.confidence} 
+                      sx={{ mt: 2, height: 8, borderRadius: 1 }}
+                    />
+                  </Box>
                 ) : (
-                  <Button variant="contained" color="primary" onClick={startAutoCycle}>
-                    Run automatic pipeline
-                  </Button>
+                  <Alert severity="info">No smell detected yet. Send sensor data from Arduino devices.</Alert>
                 )}
-                <Typography variant="caption" display="block" sx={{ mt: 1 }}>
-                  Automatic pipeline simulates: detect → ML processing → emit
-                </Typography>
               </Box>
+            </Paper>
+
+            <Paper sx={{ p: 2 }}>
+              <Typography variant="h6" gutterBottom>Detection Control</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Place a smell under the e-nose, then click the button to start the detection process.
+              </Typography>
+              <Button 
+                variant="contained" 
+                color="primary" 
+                fullWidth
+                onClick={startDetection}
+                disabled={isDetecting}
+                sx={{ mb: 2, py: 1.5 }}
+                size="large"
+              >
+                {isDetecting ? (
+                  <>
+                    <CircularProgress size={20} color="inherit" sx={{ mr: 1 }} />
+                    Detecting...
+                  </>
+                ) : (
+                  'Start Smell Detection'
+                )}
+              </Button>
+              
+              {/* Detection progress */}
+              {detectionStep && (
+                <Box sx={{ mb: 2, p: 2, bgcolor: 'info.light', borderRadius: 1 }}>
+                  <Typography variant="body2" color="info.dark">
+                    {detectionStep}
+                  </Typography>
+                  {isDetecting && <LinearProgress sx={{ mt: 1 }} />}
+                </Box>
+              )}
+              
+              {/* Detection result message */}
+              {detectionMessage && (
+                <Alert 
+                  severity={detectionMessage.includes('✅') ? 'success' : detectionMessage.includes('⚠️') ? 'warning' : 'error'} 
+                  sx={{ mt: 1 }}
+                >
+                  {detectionMessage}
+                </Alert>
+              )}
+              
+              <Divider sx={{ my: 2 }} />
+              
+              <Typography variant="caption" color="text.secondary" display="block">
+                <strong>How it works:</strong>
+                <br />1. Place smell under e-nose sensors
+                <br />2. Click "Start Smell Detection"
+                <br />3. System captures sensor readings
+                <br />4. ML model analyzes the data
+                <br />5. Prediction appears above
+              </Typography>
+              
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+                Note: Automatic processing also runs every 5 seconds when Arduino devices send data.
+              </Typography>
             </Paper>
           </Grid>
 

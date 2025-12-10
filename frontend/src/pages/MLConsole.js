@@ -65,7 +65,6 @@ export default function MLConsole() {
     try {
       setLoading(true);
       const data = await apiClient.get('/api/sensor-data');
-      setDevices(data.devices || {});
       
       // Extract recent predictions from devices
       const predictions = [];

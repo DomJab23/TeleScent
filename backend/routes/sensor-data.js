@@ -238,7 +238,7 @@ router.get('/:deviceId', async (req, res) => {
 
 /**
  * GET /api/sensor-data
- * Get all devices and their latest data
+ * Get all devices and their latest data with ML predictions
  * NOTE: Authentication temporarily disabled for testing
  */
 router.get('/', async (req, res) => {
@@ -247,10 +247,17 @@ router.get('/', async (req, res) => {
 
     Object.keys(sensorDataStore).forEach(deviceId => {
       const data = sensorDataStore[deviceId];
+      const latestReading = data[data.length - 1] || null;
+      
+      // Attach ML prediction if available
+      if (latestReading && predictionStore[deviceId]) {
+        latestReading.ml_prediction = predictionStore[deviceId];
+      }
+      
       summary[deviceId] = {
-        lastUpdate: data[data.length - 1]?.receivedAt || null,
+        lastUpdate: latestReading?.receivedAt || null,
         dataCount: data.length,
-        latestReading: data[data.length - 1] || null
+        latestReading: latestReading
       };
     });
 
