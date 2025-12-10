@@ -16,7 +16,6 @@ import {
   Divider,
   Alert,
 } from '@mui/material';
-import { Link as RouterLink } from 'react-router-dom';
 import { apiClient } from '../config/apiConfig';
 
 function StatusChip({ label, online = true }) {
@@ -35,7 +34,6 @@ export default function Dashboard() {
   const [devices, setDevices] = useState({});
   const [recentPredictions, setRecentPredictions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const intervalRef = useRef(null);
 
   // Calculate system status from real data
@@ -86,10 +84,8 @@ export default function Dashboard() {
       });
       setRecentPredictions(predictions.slice(0, 10));
       setLoading(false);
-      setError(null);
     } catch (err) {
       console.error('Error fetching devices:', err);
-      setError(err.message);
       setLoading(false);
     }
   };

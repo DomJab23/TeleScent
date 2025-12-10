@@ -29,11 +29,12 @@ import { apiClient } from '../config/apiConfig';
 
 export default function SensorData() {
   const [devices, setDevices] = useState({});
+  const [predictions, setPredictions] = useState({});
   const [selectedDevice, setSelectedDevice] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [autoRefresh, setAutoRefresh] = useState(true);
-  const intervalRef = useRef(null);
+  const [liveUpdates, setLiveUpdates] = useState(true);
+  const eventSourceRef = useRef(null);
 
   // Fetch all devices and their latest data
   const fetchDevices = async () => {
@@ -55,21 +56,79 @@ export default function SensorData() {
     }
   };
 
-  // Initial fetch and auto-refresh
+  // Fetch predictions for all devices
+  const fetchPredictions = async () => {
+    try {
+      const data = await apiClient.get('/api/predictions');
+      setPredictions(data.predictions || {});
+    } catch (err) {
+      console.error('Error fetching predictions:', err);
+    }
+  };
+
+  // Initial fetch
   useEffect(() => {
     fetchDevices();
+    fetchPredictions();
     
-    if (autoRefresh) {
-      intervalRef.current = setInterval(fetchDevices, 3000); // Refresh every 3 seconds
+    // Set up SSE connection for live sensor updates
+    if (liveUpdates) {
+      const evtSource = new EventSource('/api/sensor-data/stream');
+      eventSourceRef.current = evtSource;
+      
+      evtSource.addEventListener('sensor', (e) => {
+        try {
+          const payload = JSON.parse(e.data);
+          const dataEntry = payload.data;
+          
+          // Update devices state with new reading
+          setDevices((prev) => {
+            const deviceId = dataEntry.deviceId;
+            const updated = { ...prev };
+            
+            if (!updated[deviceId]) {
+              updated[deviceId] = {
+                lastUpdate: dataEntry.receivedAt,
+                dataCount: 1,
+                latestReading: dataEntry
+              };
+            } else {
+              updated[deviceId] = {
+                ...updated[deviceId],
+                lastUpdate: dataEntry.receivedAt,
+                dataCount: updated[deviceId].dataCount + 1,
+                latestReading: dataEntry
+              };
+            }
+            
+            // Auto-select first device
+            if (!selectedDevice) {
+              setSelectedDevice(deviceId);
+            }
+            
+            return updated;
+          });
+          
+          // Fetch latest predictions after new sensor data
+          fetchPredictions();
+          
+        } catch (err) {
+          console.error('Failed to parse SSE payload', err);
+        }
+      });
+      
+      evtSource.onerror = (err) => {
+        console.error('EventSource failed:', err);
+      };
     }
     
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoRefresh]);
+  }, [liveUpdates]);
 
   // Format timestamp
   const formatTime = (timestamp) => {
@@ -98,7 +157,7 @@ export default function SensorData() {
   };
 
   const latestData = selectedDevice ? devices[selectedDevice]?.latestReading : null;
-  const mlPrediction = latestData?.ml_prediction;
+  const mlPrediction = selectedDevice ? predictions[selectedDevice] : null;
 
   return (
     <Container maxWidth="xl" sx={{ mt: 3, mb: 6 }}>
@@ -114,16 +173,16 @@ export default function SensorData() {
           </Typography>
         </Box>
         <Box>
-          <Tooltip title={autoRefresh ? 'Auto-refresh ON' : 'Auto-refresh OFF'}>
+          <Tooltip title={liveUpdates ? 'Live updates ON (SSE)' : 'Live updates OFF'}>
             <Chip 
-              label={autoRefresh ? 'Auto-refresh (3s)' : 'Manual refresh'}
-              color={autoRefresh ? 'success' : 'default'}
-              onClick={() => setAutoRefresh(!autoRefresh)}
+              label={liveUpdates ? 'Live Updates (SSE)' : 'Paused'}
+              color={liveUpdates ? 'success' : 'default'}
+              onClick={() => setLiveUpdates(!liveUpdates)}
               sx={{ mr: 1 }}
             />
           </Tooltip>
           <Tooltip title="Refresh now">
-            <IconButton onClick={fetchDevices} color="primary">
+            <IconButton onClick={() => { fetchDevices(); fetchPredictions(); }} color="primary">
               <RefreshIcon />
             </IconButton>
           </Tooltip>

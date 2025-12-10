@@ -48,23 +48,27 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// Login user
+// Login user (accepts username or email)
 router.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { username, email, password } = req.body;
+    const loginIdentifier = username || email;
 
     // Validate required fields
-    if (!email || !password) {
+    if (!loginIdentifier || !password) {
       return res.status(400).json({ 
-        message: 'Email and password are required' 
+        message: 'Username/email and password are required' 
       });
     }
 
-    // Find user by email
-    const user = await User.findOne({ where: { email } });
+    // Find user by username or email
+    const user = await User.findOne({ 
+      where: username ? { username } : { email } 
+    });
+    
     if (!user) {
       return res.status(401).json({ 
-        message: 'Invalid email or password' 
+        message: 'Invalid username or password' 
       });
     }
 
@@ -72,7 +76,7 @@ router.post('/login', async (req, res) => {
     const isPasswordValid = await user.comparePassword(password);
     if (!isPasswordValid) {
       return res.status(401).json({ 
-        message: 'Invalid email or password' 
+        message: 'Invalid username or password' 
       });
     }
 

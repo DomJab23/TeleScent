@@ -7,7 +7,6 @@ import {
   Box,
   IconButton,
   Button,
-  Stack,
   Chip,
   TextField,
   Dialog,
@@ -33,7 +32,6 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
-// (AssignmentTurnedInIcon removed — not used)
 
 // Smell categories for the dropdown
 const CATEGORIES = ['Floral', 'Food', 'Woody', 'Chemical', 'Other'];

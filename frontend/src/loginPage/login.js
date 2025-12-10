@@ -16,29 +16,49 @@ export default function SignIn(props) {
   const navigate = useNavigate();
   const [error, setError] = useState('');
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     
-    // Add your authentication logic here
-    const email = data.get('email');
+    const username = data.get('username');
     const password = data.get('password');
     
-    // This is a dummy authentication - replace with real authentication
-    if (email && password) {
-      const userData = { email };
-      // If parent passed an onLoginSuccess callback, call it to update app state
+    if (!username || !password) {
+      setError('Please enter both username and password');
+      return;
+    }
+
+    try {
+      // Call login API
+      const response = await fetch('http://localhost:5000/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username, password }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        setError(result.message || 'Login failed');
+        return;
+      }
+
+      // Store token in localStorage
+      localStorage.setItem('token', result.token);
+      localStorage.setItem('user', JSON.stringify(result.user));
+
+      // Call parent callback if provided
       if (props && typeof props.onLoginSuccess === 'function') {
-        props.onLoginSuccess(userData);
+        props.onLoginSuccess(result.user);
       }
-      // Also navigate to dashboard if routing is available
-      try {
-        navigate('/dashboard');
-      } catch (e) {
-        // ignore if navigate not available
-      }
-    } else {
-      setError('Please enter both email and password');
+
+      // Navigate to dashboard
+      navigate('/dashboard');
+    } catch (err) {
+      console.error('Login error:', err);
+      setError('Failed to connect to server');
     }
   };
 
@@ -63,10 +83,10 @@ export default function SignIn(props) {
             margin="normal"
             required
             fullWidth
-            id="email"
-            label="Email Address"
-            name="email"
-            autoComplete="email"
+            id="username"
+            label="Username"
+            name="username"
+            autoComplete="username"
             autoFocus
           />
           <TextField

@@ -38,6 +38,10 @@ app.use('/api/sensor-data', sensorDataRoutes);
 const statsRoutes = require('./routes/stats');
 app.use('/api/stats', statsRoutes);
 
+// Predictions routes
+const predictionsRoutes = require('./routes/predictions');
+app.use('/api/predictions', predictionsRoutes);
+
 // Serve static files from the React app build directory (after API routes)
 const fs = require('fs');
 const buildPath = path.join(__dirname, '../frontend/build');
@@ -47,6 +51,9 @@ if (fs.existsSync(buildPath)) {
 } else {
   console.log('⚠️  Frontend build not found. Run "npm run build" in frontend directory.');
 }
+
+// Serve a small backend visualizer (EventSource + Chart.js)
+app.use('/visualizer', express.static(path.join(__dirname, 'public')));
 
 // Initialize database
 async function startServer() {

@@ -8,9 +8,17 @@ const User = sequelize.define('User', {
     primaryKey: true,
     autoIncrement: true,
   },
-  email: {
+  username: {
     type: DataTypes.STRING,
     allowNull: false,
+    unique: true,
+    validate: {
+      len: [3, 50],
+    },
+  },
+  email: {
+    type: DataTypes.STRING,
+    allowNull: true,
     unique: true,
     validate: {
       isEmail: true,
@@ -20,7 +28,7 @@ const User = sequelize.define('User', {
     type: DataTypes.STRING,
     allowNull: false,
     validate: {
-      len: [6, 100],
+      len: [3, 100],
     },
   },
   firstName: {

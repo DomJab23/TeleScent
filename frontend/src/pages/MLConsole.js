@@ -4,7 +4,6 @@ import {
   Box,
   Typography,
   Grid,
-  Paper,
   Button,
   LinearProgress,
   Table,
@@ -13,9 +12,6 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  List,
-  ListItem,
-  ListItemText,
   Alert,
   Card,
   CardContent,
@@ -29,7 +25,7 @@ import { apiClient } from '../config/apiConfig';
 
 export default function MLConsole() {
   // ML Model Information
-  const [modelInfo, setModelInfo] = useState({
+  const [modelInfo] = useState({
     name: 'TeleScent Random Forest Classifier',
     version: '1.0',
     scents: ['apple', 'banana', 'coconut', 'coffee', 'grape', 'icecream', 'lavender', 'lemon', 'mango', 'melon', 'orange', 'pineapple'],
@@ -39,7 +35,6 @@ export default function MLConsole() {
 
   // Real-time prediction data from backend
   const [recentPredictions, setRecentPredictions] = useState([]);
-  const [devices, setDevices] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [autoRefresh, setAutoRefresh] = useState(true);

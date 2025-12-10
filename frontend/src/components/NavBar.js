@@ -72,12 +72,21 @@ export default function NavBar() {
           {/* Theme toggle moved to navbar */}
           <ThemeToggle />
 
-          <Tooltip title="Account">
+          <Tooltip title={localStorage.getItem('token') ? 'Logout' : 'Login'}>
             <IconButton
               size="large"
               edge="end"
               color="inherit"
-              onClick={() => navigate('/login')}
+              onClick={() => {
+                if (localStorage.getItem('token')) {
+                  // Logout
+                  localStorage.removeItem('token');
+                  localStorage.removeItem('user');
+                  navigate('/login');
+                } else {
+                  navigate('/login');
+                }
+              }}
             >
               <AccountCircleIcon />
             </IconButton>

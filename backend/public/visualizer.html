@@ -1,0 +1,89 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>TeleScent Live Visualizer</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 16px; }
+    h1 { font-size: 20px; }
+    .chart-container { width: 100%; max-width: 900px; margin-bottom: 24px; }
+    #latest { margin-bottom: 12px; }
+    .reading { font-family: monospace; }
+  </style>
+</head>
+<body>
+  <h1>TeleScent — Live Sensor Visualizer</h1>
+  <p>Connecting to <code>/api/sensor-data/stream</code> and plotting recent values.</p>
+
+  <div id="latest">Latest reading: <span id="latest-json">(none)</span></div>
+
+  <div class="chart-container">
+    <canvas id="tempChart" height="120"></canvas>
+  </div>
+  <div class="chart-container">
+    <canvas id="humChart" height="120"></canvas>
+  </div>
+  <div class="chart-container">
+    <canvas id="gasChart" height="120"></canvas>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.3.0/dist/chart.umd.min.js"></script>
+  <script>
+    const maxPoints = 60;
+    const labels = [];
+    const tempData = [];
+    const humData = [];
+    const gasData = [];
+
+    function pushPoint(ts, temp, hum, gas) {
+      const timeLabel = new Date(ts).toLocaleTimeString();
+      labels.push(timeLabel);
+      tempData.push(temp);
+      humData.push(hum);
+      gasData.push(gas);
+      if (labels.length > maxPoints) {
+        labels.shift(); tempData.shift(); humData.shift(); gasData.shift();
+      }
+    }
+
+    const tempCtx = document.getElementById('tempChart').getContext('2d');
+    const humCtx = document.getElementById('humChart').getContext('2d');
+    const gasCtx = document.getElementById('gasChart').getContext('2d');
+
+    const tempChart = new Chart(tempCtx, {
+      type: 'line',
+      data: { labels, datasets: [{ label: 'Temperature (°C)', data: tempData, borderColor: 'rgb(255,99,71)', tension: 0.25, fill:false }] },
+      options: { responsive: true, animation: false, scales: { y: { beginAtZero: false } } }
+    });
+    const humChart = new Chart(humCtx, {
+      type: 'line',
+      data: { labels, datasets: [{ label: 'Humidity (%)', data: humData, borderColor: 'rgb(54,162,235)', tension: 0.25, fill:false }] },
+      options: { responsive: true, animation: false, scales: { y: { beginAtZero: true } } }
+    });
+    const gasChart = new Chart(gasCtx, {
+      type: 'line',
+      data: { labels, datasets: [{ label: 'Gas / VOC (raw)', data: gasData, borderColor: 'rgb(75,192,192)', tension: 0.25, fill:false }] },
+      options: { responsive: true, animation: false, scales: { y: { beginAtZero: true } } }
+    });
+
+    const evtSource = new EventSource('/api/sensor-data/stream');
+    evtSource.addEventListener('sensor', (e) => {
+      try {
+        const payload = JSON.parse(JSON.parse(e.data).data);
+        // payload structure: { type: 'sensor', data: dataEntry }
+        const entry = payload.data;
+        document.getElementById('latest-json').textContent = JSON.stringify(entry);
+        pushPoint(entry.timestamp || Date.now(), entry.temperature ?? 0, entry.humidity ?? 0, entry.gas ?? entry.voc ?? 0);
+        tempChart.update(); humChart.update(); gasChart.update();
+      } catch (err) {
+        console.error('Failed to parse SSE payload', err, e.data);
+      }
+    });
+
+    evtSource.onerror = (err) => {
+      console.error('EventSource failed:', err);
+    };
+  </script>
+</body>
+</html>

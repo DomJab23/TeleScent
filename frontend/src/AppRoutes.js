@@ -7,19 +7,55 @@ import MLConsole from './pages/MLConsole';
 import EmitterSetup from './pages/EmitterSetup';
 import Register from './pages/Register';
 import SensorData from './pages/SensorData';
+import ProtectedRoute from './components/ProtectedRoute';
 
 function AppRoutes() {
-  // Authentication gating disabled for now so all pages are directly accessible
+  // All routes except login and register require authentication
   return (
     <Routes>
       <Route path="/login" element={<SignIn />} />
-      <Route path="/dashboard" element={<Dashboard />} />
-    <Route path="/register" element={<Register />} />
-        <Route path="/testing" element={<Testing />} />
-      <Route path="/ml" element={<MLConsole />} />
-      <Route path="/emitter" element={<EmitterSetup />} />
-      <Route path="/sensor-data" element={<SensorData />} />
-  <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/register" element={<Register />} />
+      <Route 
+        path="/dashboard" 
+        element={
+          <ProtectedRoute>
+            <Dashboard />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/testing" 
+        element={
+          <ProtectedRoute>
+            <Testing />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/ml" 
+        element={
+          <ProtectedRoute>
+            <MLConsole />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/emitter" 
+        element={
+          <ProtectedRoute>
+            <EmitterSetup />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/sensor-data" 
+        element={
+          <ProtectedRoute>
+            <SensorData />
+          </ProtectedRoute>
+        } 
+      />
+      <Route path="/" element={<Navigate to="/login" replace />} />
     </Routes>
   );
 }

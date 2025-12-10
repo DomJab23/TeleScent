@@ -3,6 +3,8 @@ const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
 const { sensorDataStore, predictionStore } = require('../services/dataStore');
 
+// SSE clients list
+const sseClients = [];
 /**
  * POST /api/sensor-data
  * Receive sensor data from Arduino/ESP32
@@ -90,6 +92,20 @@ router.post('/', async (req, res) => {
       sensorDataStore[deviceId].shift();
     }
 
+    // Broadcast new reading to all connected SSE clients
+    try {
+      const payload = JSON.stringify({ type: 'sensor', data: dataEntry });
+      sseClients.forEach(clientRes => {
+        try {
+          clientRes.write(`event: sensor\n`);
+          clientRes.write(`data: ${payload}\n\n`);
+        } catch (e) {
+          // ignore per-client errors
+        }
+      });
+    } catch (e) {
+      console.error('Error broadcasting SSE:', e);
+    }
     // Send acknowledgment
     res.status(200).json({
       message: 'Sensor data received successfully',
@@ -103,6 +119,30 @@ router.post('/', async (req, res) => {
       error: error.message
     });
   }
+});
+
+/**
+ * GET /api/sensor-data/stream
+ * Server-Sent Events stream that emits each incoming sensor reading as it arrives.
+ */
+router.get('/stream', (req, res) => {
+  // Set headers for SSE
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders && res.flushHeaders();
+
+  // Send an initial comment to establish the stream
+  res.write(': connected\n\n');
+
+  // Add to clients
+  sseClients.push(res);
+
+  // Remove client when connection closes
+  req.on('close', () => {
+    const idx = sseClients.indexOf(res);
+    if (idx !== -1) sseClients.splice(idx, 1);
+  });
 });
 
 /**
