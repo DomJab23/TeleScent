@@ -1,7 +1,7 @@
 // API Configuration Helper for Internet Access
 // Place this file at: frontend/src/config/apiConfig.js
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
 const DEBUG = process.env.REACT_APP_DEBUG === 'true';
 
 export const apiConfig = {
@@ -29,6 +29,7 @@ export const apiClient = {
         ...options,
         headers: {
           'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
           ...options.headers,
         },
         credentials: 'include', // Send cookies with requests

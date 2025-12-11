@@ -11,6 +11,7 @@ import Box from '@mui/material/Box';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import Typography from '@mui/material/Typography';
 import Container from '@mui/material/Container';
+import { apiClient } from '../config/apiConfig';
 
 export default function SignIn(props) {
   const navigate = useNavigate();
@@ -30,20 +31,7 @@ export default function SignIn(props) {
 
     try {
       // Call login API
-      const response = await fetch('http://localhost:5000/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ username, password }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        setError(result.message || 'Login failed');
-        return;
-      }
+      const result = await apiClient.post('/api/auth/login', { username, password });
 
       // Store token in localStorage
       localStorage.setItem('token', result.token);
