@@ -222,7 +222,6 @@ export default function TestingConsole() {
                 <Button variant="contained" onClick={handleSend} sx={{ minWidth: 120 }}>
                   Send
                 </Button>
-                <Button variant="outlined" color="inherit" onClick={() => receiveFromDevice('(Simulated incoming) PING')}>Simulate In</Button>
                 <Tooltip title="Clear log">
                   <IconButton
                     aria-label="clear"
@@ -291,13 +290,7 @@ export default function TestingConsole() {
             </Box>
           </Paper>
 
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="subtitle1">Quick actions</Typography>
-            <Stack spacing={1} sx={{ mt: 1 }}>
-              <Button onClick={() => receiveFromDevice('+MOCK_RESPONSE OK')} size="small">Simulate OK</Button>
-              <Button onClick={() => receiveFromDevice('+MOCK_ALERT ERROR')} color="error" size="small">Simulate Error</Button>
-            </Stack>
-          </Paper>
+          {/* Removed Quick actions - receiveFromDevice function not implemented */}
         </Box>
       </Box>
     </Container>
