@@ -49,8 +49,8 @@ async function getPrediction(sensorReading) {
     const pythonScript = path.join(__dirname, '../../ml/serve.py');
     // Detect if running in Docker and use appropriate Python path
     const isDocker = process.env.DOCKER_ENV === 'true';
-    // Use 'python' command which works on both Windows and Linux
-    const pythonPath = isDocker ? '/app/venv/bin/python3' : 'python';
+    // Use virtual environment Python with ML packages installed
+    const pythonPath = isDocker ? '/app/venv/bin/python3' : '/home/klaus/TeleScent/.venv/bin/python3';
     const python = spawn(pythonPath, [pythonScript]);
     
     let outputData = '';

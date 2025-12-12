@@ -1,0 +1,27 @@
+{
+  "train_accuracy": 1.0,
+  "test_accuracy": 1.0,
+  "cv_accuracy_mean": 0.9733870967741935,
+  "cv_accuracy_std": 0.052453811336859474,
+  "n_samples": 16119,
+  "n_train": 12895,
+  "n_test": 3224,
+  "n_features": 7,
+  "features": [
+    "gas_bme",
+    "srawVoc",
+    "srawNox",
+    "NO2",
+    "ethanol",
+    "VOC_multichannel",
+    "COandH2"
+  ],
+  "classes": [
+    "cinnamon",
+    "gingerbread",
+    "no_scent",
+    "orange",
+    "vanilla"
+  ],
+  "n_classes": 5
+}

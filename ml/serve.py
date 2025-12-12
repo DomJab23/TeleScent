@@ -81,24 +81,33 @@ def predict_scent(sensor_reading):
             'co_h2': 'COandH2'                # Chemical sensor
         }
         
-        # Convert Arduino format to dataset format
+        # Convert to dataset format - support both Arduino names AND dataset names
         features_dict = {}
-        for arduino_name, dataset_name in arduino_to_dataset.items():
-            features_dict[dataset_name] = sensor_reading.get(arduino_name, np.nan)
+        for dataset_name in FEATURES:
+            # First try to get value directly (dataset column name)
+            if dataset_name in sensor_reading:
+                features_dict[dataset_name] = sensor_reading[dataset_name]
+            else:
+                # Try to find Arduino name that maps to this dataset name
+                arduino_name = next((k for k, v in arduino_to_dataset.items() if v == dataset_name), None)
+                if arduino_name and arduino_name in sensor_reading:
+                    features_dict[dataset_name] = sensor_reading[arduino_name]
+                else:
+                    features_dict[dataset_name] = np.nan
         
         # Create dataframe with correct column order (must match FEATURES)
         features_df = pd.DataFrame([features_dict], columns=FEATURES)
         
-        # Predict
-        pred_encoded = pipeline.predict(features_df)[0]
+        # Predict - pipeline returns string labels directly (no encoding needed)
+        pred_label = pipeline.predict(features_df)[0]
         pred_proba = pipeline.predict_proba(features_df)[0]
         
-        # Decode prediction
-        pred_label = label_encoder.inverse_transform([pred_encoded])[0]
+        # Get class names from the pipeline classifier
+        class_names = pipeline.named_steps['classifier'].classes_
         
-        # Get probabilities for all classes (top 3)
+        # Get probabilities for all classes
         class_probabilities = {
-            label_encoder.classes_[i]: float(prob) 
+            class_names[i]: float(prob) 
             for i, prob in enumerate(pred_proba)
         }
         
@@ -106,9 +115,15 @@ def predict_scent(sensor_reading):
         sorted_probs = sorted(class_probabilities.items(), key=lambda x: x[1], reverse=True)
         top_3 = dict(sorted_probs[:3])
         
+        # Get confidence for the predicted class
+        pred_index = list(class_names).index(pred_label)
+        confidence = float(pred_proba[pred_index])
+        
+        # Model now includes 'no_scent' as a trained class!
+        # No need for confidence threshold - model will predict 'no_scent' when appropriate
         return {
             'predicted_scent': pred_label,
-            'confidence': float(pred_proba[pred_encoded]),
+            'confidence': confidence,
             'top_predictions': top_3,
             'all_probabilities': class_probabilities,
             'features_used': features_dict
