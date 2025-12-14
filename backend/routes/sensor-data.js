@@ -27,10 +27,33 @@ const sseClients = [];
  */
 // NOTE: Authentication temporarily disabled for GSM testing
 router.post('/', async (req, res) => {
+    // --- Detect scent removal by VOC/NO2 drop ---
+    // If VOC or NO2 drops by 7 or more compared to previous reading, force 'no_scent'
+    let forceNoScentByDrop = false;
+    const prev = sensorDataStore[deviceId]?.length > 1 ? sensorDataStore[deviceId][sensorDataStore[deviceId].length - 2] : null;
+    if (prev) {
+      // Use 'voc' and 'no2' fields (fall back to 0 if missing)
+      const prevVOC = prev.voc ?? 0;
+      const prevNO2 = prev.no2 ?? 0;
+      const currVOC = dataEntry.voc ?? 0;
+      const currNO2 = dataEntry.no2 ?? 0;
+      if ((prevVOC - currVOC) >= 4 || (prevNO2 - currNO2) >= 4) {
+        forceNoScentByDrop = true;
+        console.log(`🚦 VOC or NO2 dropped by 4 or more (VOC: ${prevVOC}→${currVOC}, NO2: ${prevNO2}→${currNO2}), forcing 'no_scent'.`);
+      }
+      // If VOC or NO2 rises by 4 or more, reset consecutive prediction counter for this device
+      if ((currVOC - prevVOC) >= 4 || (currNO2 - prevNO2) >= 4) {
+        if (predictionStore._consecutiveState && predictionStore._consecutiveState[deviceId]) {
+          predictionStore._consecutiveState[deviceId].lastScent = null;
+          predictionStore._consecutiveState[deviceId].count = 0;
+          console.log(`🔄 VOC or NO2 rose by 4 or more (VOC: ${prevVOC}→${currVOC}, NO2: ${prevNO2}→${currNO2}), counter reset for new scent.`);
+        }
+      }
+    }
   try {
     // Support both device_id (Arduino) and deviceId (camelCase)
     const deviceId = req.body.device_id || req.body.deviceId;
-    
+
     // Extract all sensor values
     const {
       timestamp,
@@ -81,16 +104,96 @@ router.post('/', async (req, res) => {
       no2: dataEntry.no2
     });
 
-    // Store the data (grouped by device) - prediction happens elsewhere
+    // Log ALL chemical sensors for ML debugging
+    console.log(`🔬 Chemical sensors (for ML):`, {
+      voc_raw: dataEntry.voc_raw,
+      nox_raw: dataEntry.nox_raw,
+      no2: dataEntry.no2,
+      ethanol: dataEntry.ethanol,
+      voc: dataEntry.voc,
+      co_h2: dataEntry.co_h2
+    });
+
+    // Store the data (grouped by device)
     if (!sensorDataStore[deviceId]) {
       sensorDataStore[deviceId] = [];
     }
-    
     // Keep only last 100 readings per device
     sensorDataStore[deviceId].push(dataEntry);
     if (sensorDataStore[deviceId].length > 100) {
       sensorDataStore[deviceId].shift();
     }
+
+    // Always run prediction for every POST (no caching)
+    const { getPrediction, scentToEmitterControl } = require('../services/predictionService');
+    console.log(`🔮 Running prediction for ${deviceId} (every POST)...`);
+    const prediction = await getPrediction(dataEntry);
+    console.log(`🤖 ML Prediction: ${prediction.predicted_scent} (${(prediction.confidence * 100).toFixed(1)}%)`);
+
+    // --- Consecutive prediction logic (backend, per device) ---
+    if (!predictionStore._consecutiveState) predictionStore._consecutiveState = {};
+    if (!predictionStore._consecutiveState[deviceId]) {
+      predictionStore._consecutiveState[deviceId] = { lastScent: null, count: 0 };
+    }
+    const state = predictionStore._consecutiveState[deviceId];
+    let finalScent = prediction.predicted_scent;
+    let finalConfidence = prediction.confidence;
+    let finalTopPredictions = prediction.top_predictions;
+    let forcedNoScent = false;
+
+    // If VOC or NO2 dropped by 7, force no_scent
+    if (forceNoScentByDrop) {
+      finalScent = 'no_scent';
+      finalConfidence = 1.0;
+      finalTopPredictions = [{ scent: 'no_scent', confidence: 1.0 }];
+      forcedNoScent = true;
+      state.lastScent = 'no_scent';
+      state.count = 0;
+      console.log(`🚦 Forcing 'no_scent' due to VOC/NO2 drop.`);
+    } else if (finalScent !== state.lastScent) {
+      state.lastScent = finalScent;
+      state.count = 1;
+      console.log(`🔄 Scent changed to ${finalScent}, counter reset.`);
+    } else {
+      state.count += 1;
+      console.log(`🔁 Scent '${finalScent}' count: ${state.count}`);
+      if (state.count >= 3 && finalScent !== 'no_scent') {
+        finalScent = 'no_scent';
+        finalConfidence = 1.0;
+        finalTopPredictions = [{ scent: 'no_scent', confidence: 1.0 }];
+        forcedNoScent = true;
+        state.lastScent = 'no_scent';
+        state.count = 0; // Reset counter after forcing no_scent
+        console.log(`🚦 Forcing 'no_scent' after 3 consecutive predictions. Counter reset.`);
+      }
+    }
+
+    const emitterControl = scentToEmitterControl(finalScent, finalConfidence);
+
+    // Store the prediction (overwrite for this device)
+    predictionStore[deviceId] = {
+      scent: finalScent,
+      confidence: finalConfidence,
+      top_predictions: finalTopPredictions,
+      emitter_control: emitterControl,
+      timestamp: new Date().toISOString(),
+      lastProcessedTime: dataEntry.receivedAt,
+      sensorData: {
+        deviceId: dataEntry.deviceId,
+        temperature: dataEntry.temperature,
+        humidity: dataEntry.humidity,
+        pressure: dataEntry.pressure,
+        gas: dataEntry.gas,
+        voc_raw: dataEntry.voc_raw,
+        nox_raw: dataEntry.nox_raw,
+        no2: dataEntry.no2,
+        ethanol: dataEntry.ethanol,
+        voc: dataEntry.voc,
+        co_h2: dataEntry.co_h2
+      },
+      forcedNoScent
+    };
+    console.log(`✅ Prediction stored for ${deviceId}:`, emitterControl);
 
     // Broadcast new reading to all connected SSE clients
     try {
@@ -106,10 +209,13 @@ router.post('/', async (req, res) => {
     } catch (e) {
       console.error('Error broadcasting SSE:', e);
     }
-    // Send acknowledgment
+
+    // Send acknowledgment with prediction and emitter control
     res.status(200).json({
-      message: 'Sensor data received successfully',
-      data: dataEntry
+      message: 'Sensor data received and prediction updated',
+      data: dataEntry,
+      prediction: prediction,
+      emitter_control: emitterControl
     });
 
   } catch (error) {
@@ -152,9 +258,12 @@ router.get('/stream', (req, res) => {
  */
 router.get('/emitter', async (req, res) => {
   try {
+    console.log('📡 Emitter control requested (any device)');
+    
     // Find the most recently updated prediction
     let latestPrediction = null;
     let latestTime = null;
+    let deviceWithPrediction = null;
     
     Object.keys(predictionStore).forEach(deviceId => {
       const prediction = predictionStore[deviceId];
@@ -164,16 +273,20 @@ router.get('/emitter', async (req, res) => {
         if (!latestTime || predictionTime > latestTime) {
           latestTime = predictionTime;
           latestPrediction = prediction;
+          deviceWithPrediction = deviceId;
         }
       }
     });
     
     // If no prediction found, return all zeros
     if (!latestPrediction || !latestPrediction.emitter_control) {
+      console.log('⚠️  No prediction available, returning all zeros');
       return res.json({"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"6":0,"7":0});
     }
     
     // Return the emitter control
+    console.log(`✅ Sending emitter control for ${deviceWithPrediction}: ${latestPrediction.scent} (${(latestPrediction.confidence * 100).toFixed(1)}%)`);
+    console.log('   Emitter bytes:', latestPrediction.emitter_control);
     res.json(latestPrediction.emitter_control);
     
   } catch (error) {

@@ -1,14 +1,8 @@
 {
-  "train_accuracy": 1.0,
-  "test_accuracy": 1.0,
-  "cv_accuracy_mean": 0.9733870967741935,
-  "cv_accuracy_std": 0.052453811336859474,
-  "n_samples": 16119,
-  "n_train": 12895,
-  "n_test": 3224,
-  "n_features": 7,
+  "model_type": "RandomForestClassifier",
+  "n_estimators": 100,
+  "max_depth": 20,
   "features": [
-    "gas_bme",
     "srawVoc",
     "srawNox",
     "NO2",
@@ -16,12 +10,19 @@
     "VOC_multichannel",
     "COandH2"
   ],
+  "target_column": "scent_name",
   "classes": [
     "cinnamon",
     "gingerbread",
     "no_scent",
-    "orange",
+    "norange",
     "vanilla"
   ],
-  "n_classes": 5
+  "train_accuracy": 0.9998421717171717,
+  "test_accuracy": 0.9722222222222222,
+  "cv_mean_accuracy": 0.9738009755028768,
+  "cv_std_accuracy": 0.003007070551241431,
+  "training_samples": 6336,
+  "test_samples": 1584,
+  "dataset": "NATURAL_ML_Data_with_no_scent.xlsx"
 }

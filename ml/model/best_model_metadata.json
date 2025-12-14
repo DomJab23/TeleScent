@@ -1,0 +1,92 @@
+{
+  "best_algorithm": "Random Forest",
+  "cv_mean_accuracy": 0.9730109625808252,
+  "cv_std_accuracy": 0.004393836637088331,
+  "test_accuracy": 0.9722222222222222,
+  "training_time_seconds": 0.21334290504455566,
+  "classes": [
+    "cinnamon",
+    "gingerbread",
+    "no_scent",
+    "norange",
+    "vanilla"
+  ],
+  "n_features": 19,
+  "training_samples": 6336,
+  "test_samples": 1584,
+  "dataset": "NATURAL_ML_Data_with_no_scent.xlsx",
+  "comparison_results": [
+    {
+      "Algorithm": "Random Forest",
+      "CV Mean": 0.9730109625808252,
+      "CV Std": 0.004393836637088331,
+      "Test Accuracy": 0.9722222222222222,
+      "Train Time (s)": 0.21334290504455566,
+      "CV Time (s)": 1.770066261291504
+    },
+    {
+      "Algorithm": "Gradient Boosting",
+      "CV Mean": 0.9717486349682176,
+      "CV Std": 0.005002287520277424,
+      "Test Accuracy": 0.9678030303030303,
+      "Train Time (s)": 20.87494969367981,
+      "CV Time (s)": 29.396862983703613
+    },
+    {
+      "Algorithm": "K-Nearest Neighbors",
+      "CV Mean": 0.9665402264222349,
+      "CV Std": 0.007227637228123621,
+      "Test Accuracy": 0.9646464646464646,
+      "Train Time (s)": 0.007898092269897461,
+      "CV Time (s)": 0.08434295654296875
+    },
+    {
+      "Algorithm": "Neural Network",
+      "CV Mean": 0.9605425518936158,
+      "CV Std": 0.004685654797931208,
+      "Test Accuracy": 0.9558080808080808,
+      "Train Time (s)": 2.1256461143493652,
+      "CV Time (s)": 1.8524386882781982
+    },
+    {
+      "Algorithm": "SVM (RBF)",
+      "CV Mean": 0.9586485625150944,
+      "CV Std": 0.004884070380570983,
+      "Test Accuracy": 0.9608585858585859,
+      "Train Time (s)": 0.1854994297027588,
+      "CV Time (s)": 1.1628684997558594
+    },
+    {
+      "Algorithm": "Decision Tree",
+      "CV Mean": 0.9528097371022237,
+      "CV Std": 0.0064167275243188935,
+      "Test Accuracy": 0.9589646464646465,
+      "Train Time (s)": 0.09203863143920898,
+      "CV Time (s)": 0.14564895629882812
+    },
+    {
+      "Algorithm": "SVM (Linear)",
+      "CV Mean": 0.9174551027166187,
+      "CV Std": 0.010506902071151751,
+      "Test Accuracy": 0.9223484848484849,
+      "Train Time (s)": 0.22205781936645508,
+      "CV Time (s)": 0.30634164810180664
+    },
+    {
+      "Algorithm": "AdaBoost",
+      "CV Mean": 0.6911286005592087,
+      "CV Std": 0.010046364871197215,
+      "Test Accuracy": 0.7121212121212122,
+      "Train Time (s)": 1.3299810886383057,
+      "CV Time (s)": 1.9427266120910645
+    },
+    {
+      "Algorithm": "Naive Bayes",
+      "CV Mean": 0.6841843048110368,
+      "CV Std": 0.018263110464605586,
+      "Test Accuracy": 0.6887626262626263,
+      "Train Time (s)": 0.01663684844970703,
+      "CV Time (s)": 0.10821104049682617
+    }
+  ]
+}

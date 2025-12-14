@@ -3,15 +3,18 @@ const path = require('path');
 const { sensorDataStore, predictionStore } = require('./dataStore');
 
 // Scent to Emitter Mapping
+// Updated for 5-class model: cinnamon, gingerbread, norange (Natural Orange), vanilla, no_scent
 const SCENT_EMITTER_MAP = {
-  'banana': { channel: 0, intensity: 200 },
-  'orange': { channel: 1, intensity: 200 },
-  'coconut': { channel: 2, intensity: 200 },
-  'pineapple': { channel: 3, intensity: 200 },
-  'grape': { channel: 4, intensity: 200 },
-  'icecream': { channel: 5, intensity: 200 },
-  'strawberry': { channel: 6, intensity: 200 },
-  'lemon': { channel: 7, intensity: 200 }
+  'cinnamon': { channel: 0, intensity: 200 },
+  'gingerbread': { channel: 1, intensity: 200 },
+  'norange': { channel: 2, intensity: 200 },  // Natural Orange scent
+  'vanilla': { channel: 3, intensity: 200 },
+  'no_scent': { channel: -1, intensity: 0 },  // Baseline - no emitter activation (channel -1 = no output)
+  // Legacy mappings (if needed for older data)
+  'banana': { channel: 5, intensity: 200 },
+  'orange': { channel: 2, intensity: 200 },   // Same as norange
+  'coconut': { channel: 6, intensity: 200 },
+  'pineapple': { channel: 7, intensity: 200 }
 };
 
 /**
@@ -27,13 +30,22 @@ function scentToEmitterControl(scent, confidence) {
     "4": 0, "5": 0, "6": 0, "7": 0
   };
   
+  // Special case: no_scent means no emitter activation
+  if (scent.toLowerCase() === 'no_scent') {
+    console.log(`🎚️  Emitter control: no_scent → All channels OFF (no emission)`);
+    return emitterControl;
+  }
+  
   // Get emitter configuration for this scent
   const emitterConfig = SCENT_EMITTER_MAP[scent.toLowerCase()];
   
-  if (emitterConfig) {
+  if (emitterConfig && emitterConfig.channel >= 0) {
     // Scale intensity by confidence (minimum 100 to be noticeable)
     const scaledIntensity = Math.max(100, Math.round(emitterConfig.intensity * confidence));
     emitterControl[emitterConfig.channel.toString()] = scaledIntensity;
+    console.log(`🎚️  Emitter control: ${scent} → Channel ${emitterConfig.channel} @ ${scaledIntensity}`);
+  } else {
+    console.warn(`⚠️  No emitter mapping found for scent: "${scent}"`);
   }
   
   return emitterControl;
