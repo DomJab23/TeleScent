@@ -4,8 +4,8 @@
 jest.mock('child_process');
 
 const { spawn } = require('child_process');
-const { scentToEmitterControl, processSensorData, getPrediction } = require('../services/predictionService');
-const { sensorDataStore, predictionStore } = require('../services/dataStore');
+const { scentToEmitterControl, processSensorData, getPrediction } = require('../backend/services/predictionService');
+const { sensorDataStore, predictionStore } = require('../backend/services/dataStore');
 
 // Helper to reset in-memory stores
 function resetStores() {
@@ -58,7 +58,7 @@ describe('predictionService utils', () => {
     ];
     predictionStore['dev1'] = { lastProcessedTime: '2024-01-01T00:00:00Z' };
 
-    const spyPrediction = jest.spyOn(require('../services/predictionService'), 'getPrediction');
+    const spyPrediction = jest.spyOn(require('../backend/services/predictionService'), 'getPrediction');
 
     await processSensorData();
 
