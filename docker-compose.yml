@@ -1,16 +1,43 @@
 services:
-  app:
-    build: .
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
     ports:
-      - "8080:5000"
+      - "5001:5001"
     environment:
       - NODE_ENV=production
-      - PORT=5000
+      - PORT=5001
       - JWT_SECRET=telescent-production-secret-change-this
+      - DOCKER_ENV=true
     volumes:
-      - db_data:/app/backend/
+      - ./backend:/app/backend
+      - ./ml:/app/ml
+      - /app/backend/node_modules
     restart: unless-stopped
-    container_name: telescent-app
+    container_name: telescent-backend
+    networks:
+      - telescent-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:5001/api/stats"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-volumes:
-  db_data:
+  ngrok:
+    image: ngrok/ngrok:latest
+    command: http backend:5001 --log stdout
+    ports:
+      - "4040:4040"
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    depends_on:
+      - backend
+    restart: unless-stopped
+    container_name: telescent-ngrok
+    networks:
+      - telescent-network
+
+networks:
+  telescent-network:
+    driver: bridge

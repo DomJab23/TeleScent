@@ -275,7 +275,8 @@ def predict_scent(sensor_reading):
         print(f"🔬 Sensor values: voc_raw={features_dict['srawVoc']:.0f}, nox_raw={features_dict['srawNox']:.0f}, " + 
               f"no2={features_dict['NO2']:.0f}, ethanol={features_dict['ethanol']:.0f}, " +
               f"voc={features_dict['VOC_multichannel']:.0f}, co_h2={features_dict['COandH2']:.0f}", file=sys.stderr)
-        print(f"🎯 Prediction: {pred_label_str} ({confidence:.2%}) | Top 3: {', '.join([f'{p['scent']}({p['confidence']:.0%})' for p in top_3_list[:3]])}", file=sys.stderr)
+        top_3_formatted = ', '.join([f"{p['scent']}({p['confidence']:.0%})" for p in top_3_list[:3]])
+        print(f"🎯 Prediction: {pred_label_str} ({confidence:.2%}) | Top 3: {top_3_formatted}", file=sys.stderr)
         
         # Model now includes 'no_scent' as a trained class!
         # No need for confidence threshold - model will predict 'no_scent' when appropriate

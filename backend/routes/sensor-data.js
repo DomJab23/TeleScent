@@ -27,29 +27,6 @@ const sseClients = [];
  */
 // NOTE: Authentication temporarily disabled for GSM testing
 router.post('/', async (req, res) => {
-    // --- Detect scent removal by VOC/NO2 drop ---
-    // If VOC or NO2 drops by 7 or more compared to previous reading, force 'no_scent'
-    let forceNoScentByDrop = false;
-    const prev = sensorDataStore[deviceId]?.length > 1 ? sensorDataStore[deviceId][sensorDataStore[deviceId].length - 2] : null;
-    if (prev) {
-      // Use 'voc' and 'no2' fields (fall back to 0 if missing)
-      const prevVOC = prev.voc ?? 0;
-      const prevNO2 = prev.no2 ?? 0;
-      const currVOC = dataEntry.voc ?? 0;
-      const currNO2 = dataEntry.no2 ?? 0;
-      if ((prevVOC - currVOC) >= 4 || (prevNO2 - currNO2) >= 4) {
-        forceNoScentByDrop = true;
-        console.log(`🚦 VOC or NO2 dropped by 4 or more (VOC: ${prevVOC}→${currVOC}, NO2: ${prevNO2}→${currNO2}), forcing 'no_scent'.`);
-      }
-      // If VOC or NO2 rises by 4 or more, reset consecutive prediction counter for this device
-      if ((currVOC - prevVOC) >= 4 || (currNO2 - prevNO2) >= 4) {
-        if (predictionStore._consecutiveState && predictionStore._consecutiveState[deviceId]) {
-          predictionStore._consecutiveState[deviceId].lastScent = null;
-          predictionStore._consecutiveState[deviceId].count = 0;
-          console.log(`🔄 VOC or NO2 rose by 4 or more (VOC: ${prevVOC}→${currVOC}, NO2: ${prevNO2}→${currNO2}), counter reset for new scent.`);
-        }
-      }
-    }
   try {
     // Support both device_id (Arduino) and deviceId (camelCase)
     const deviceId = req.body.device_id || req.body.deviceId;
@@ -122,6 +99,28 @@ router.post('/', async (req, res) => {
     sensorDataStore[deviceId].push(dataEntry);
     if (sensorDataStore[deviceId].length > 100) {
       sensorDataStore[deviceId].shift();
+    }
+
+    // Check for VOC/NO2 drop to detect scent removal
+    let forceNoScentByDrop = false;
+    const prev = sensorDataStore[deviceId].length > 1 ? sensorDataStore[deviceId][sensorDataStore[deviceId].length - 2] : null;
+    if (prev) {
+      const prevVOC = prev.voc ?? 0;
+      const prevNO2 = prev.no2 ?? 0;
+      const currVOC = dataEntry.voc ?? 0;
+      const currNO2 = dataEntry.no2 ?? 0;
+      if ((prevVOC - currVOC) >= 4 || (prevNO2 - currNO2) >= 4) {
+        forceNoScentByDrop = true;
+        console.log(`🚦 VOC or NO2 dropped by 4 or more (VOC: ${prevVOC}→${currVOC}, NO2: ${prevNO2}→${currNO2}), forcing 'no_scent'.`);
+      }
+      // If VOC or NO2 rises by 4 or more, reset consecutive prediction counter
+      if ((currVOC - prevVOC) >= 4 || (currNO2 - prevNO2) >= 4) {
+        if (predictionStore._consecutiveState && predictionStore._consecutiveState[deviceId]) {
+          predictionStore._consecutiveState[deviceId].lastScent = null;
+          predictionStore._consecutiveState[deviceId].count = 0;
+          console.log(`🔄 VOC or NO2 rose by 4 or more (VOC: ${prevVOC}→${currVOC}, NO2: ${prevNO2}→${currNO2}), counter reset for new scent.`);
+        }
+      }
     }
 
     // Always run prediction for every POST (no caching)

@@ -17,6 +17,21 @@ COPY backend/package*.json ./backend/
 # Install backend dependencies
 RUN cd backend && npm install --legacy-peer-deps
 
+# Copy frontend package files
+COPY frontend/package*.json ./frontend/
+
+# Install frontend dependencies
+RUN cd frontend && npm install --legacy-peer-deps
+
+# Copy frontend source code
+COPY frontend ./frontend
+
+# Build frontend
+RUN cd frontend && npm run build
+
+# Copy built frontend to backend build directory
+RUN mkdir -p backend/build && cp -r frontend/build/* backend/build/
+
 # Copy ML requirements
 COPY ml/requirements.txt ./ml/
 
@@ -33,12 +48,29 @@ RUN sed -i '1s|.*|#!/app/venv/bin/python3|' /app/ml/serve.py && \
     chmod +x /app/ml/serve.py
 
 # Expose backend port
-EXPOSE 5000
+EXPOSE 5001
 
 # Set environment variables
 ENV NODE_ENV=production
-ENV PORT=5000
+ENV PORT=5001
 ENV DOCKER_ENV=true
 
-# Start backend server
-CMD ["node", "backend/server.js"]
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD node -e "require('http').get('http://localhost:5001/api/stats', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+
+# Create startup script that checks for admin user but doesn't force create
+RUN echo '#!/bin/sh\n\
+echo "🚀 Starting TeleScent Backend..."\n\
+echo "📊 Checking database..."\n\
+if [ -f /app/backend/telescent.db ]; then\n\
+  echo "✅ Using existing database"\n\
+else\n\
+  echo "📝 Creating new database and admin user..."\n\
+  node /app/backend/create-admin.js\n\
+fi\n\
+echo "🌐 Starting server..."\n\
+node /app/backend/server.js' > /app/start.sh && chmod +x /app/start.sh
+
+# Start with the startup script
+CMD ["/bin/sh", "/app/start.sh"]
