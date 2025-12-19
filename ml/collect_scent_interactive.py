@@ -7,7 +7,7 @@ Asks the user what scent they are collecting
 import requests
 import time
 import random
-from datetime import datetime
+from datetime import datetime, timezone
 
 API_URL = "http://localhost:5001/api/sensor-data"
 
@@ -49,14 +49,14 @@ def collect_data(device_id, scent, duration, interval):
             "deviceId": device_id,
             "sensorValues": sensor_values,
             "scent": scent,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
         try:
             # Send to backend
             response = requests.post(API_URL, json=payload)
             
-            if response.status_code == 201:
+            if response.status_code in [200, 201]:
                 readings_sent += 1
                 print(f"✅ Reading #{readings_sent} sent | Scent: {scent} | Sensors: {[f'{v:.1f}' for v in sensor_values]}")
             else:
