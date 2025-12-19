@@ -1,0 +1,194 @@
+@startuml TeleScent ER Diagram
+
+skinparam backgroundColor #FFFFFF
+skinparam linetype ortho
+
+title TeleScent System - Entity Relationship Diagram
+
+' Define entities with attributes
+
+entity "User" as user {
+  * id : INTEGER <<PK>>
+  --
+  * username : STRING <<UNIQUE>>
+  email : STRING <<UNIQUE>>
+  * password : STRING (hashed)
+  firstName : STRING
+  lastName : STRING
+  isActive : BOOLEAN
+  createdAt : TIMESTAMP
+  updatedAt : TIMESTAMP
+}
+
+entity "SensorData" as sensor {
+  * id : INTEGER <<PK>>
+  --
+  * deviceId : STRING
+  userId : STRING <<FK>>
+  * timestamp : BIGINT
+  receivedAt : TIMESTAMP
+  --
+  temperature : FLOAT
+  humidity : FLOAT
+  pressure : FLOAT
+  gas : INTEGER
+  voc_raw : INTEGER
+  nox_raw : INTEGER
+  no2 : INTEGER
+  ethanol : INTEGER
+  voc : INTEGER
+  co_h2 : INTEGER
+}
+
+entity "Prediction" as prediction {
+  * id : INTEGER <<PK>>
+  --
+  * deviceId : STRING
+  userId : STRING <<FK>>
+  * timestamp : TIMESTAMP
+  lastProcessedTime : TIMESTAMP
+  --
+  * scent : STRING
+  * confidence : FLOAT
+  top_predictions : JSON
+  emitter_control : JSON
+  --
+  Sensor Snapshot:
+  temperature : FLOAT
+  humidity : FLOAT
+  pressure : FLOAT
+  gas : INTEGER
+  voc_raw : INTEGER
+  nox_raw : INTEGER
+  no2 : INTEGER
+  ethanol : INTEGER
+  voc : INTEGER
+  co_h2 : INTEGER
+}
+
+entity "Device" as device {
+  * deviceId : STRING <<PK>>
+  --
+  deviceType : STRING
+  location : STRING
+  lastSeen : TIMESTAMP
+  isActive : BOOLEAN
+}
+
+entity "EmitterControl" as emitter {
+  * id : INTEGER <<PK>>
+  --
+  * predictionId : INTEGER <<FK>>
+  * timestamp : TIMESTAMP
+  --
+  * channel0 : INTEGER
+  * channel1 : INTEGER
+  * channel2 : INTEGER
+  * channel3 : INTEGER
+  * channel4 : INTEGER
+  * channel5 : INTEGER
+  * channel6 : INTEGER
+  * channel7 : INTEGER
+}
+
+entity "ScentMapping" as scent_map {
+  * scent : STRING <<PK>>
+  --
+  * channel : INTEGER
+  * defaultIntensity : INTEGER
+  description : STRING
+}
+
+' Define relationships
+
+user ||--o{ sensor : "owns/monitors"
+user ||--o{ prediction : "receives"
+device ||--o{ sensor : "generates"
+device ||--o{ prediction : "triggers"
+sensor ||--|| prediction : "analyzed by ML"
+prediction ||--|| emitter : "controls"
+scent_map ||--o{ prediction : "defines mapping"
+
+note right of user
+  **Storage:** SQLite Database
+  **Auth:** JWT tokens
+  **Password:** bcrypt hashed
+  
+  Users can monitor multiple devices
+  and view their predictions
+end note
+
+note right of sensor
+  **Storage:** In-Memory (Runtime)
+  **Structure:** JavaScript Object
+  {
+    deviceId: [array of readings]
+  }
+  
+  Contains real-time sensor readings
+  from eNose devices. Not persisted
+  to database currently.
+end note
+
+note right of prediction
+  **Storage:** In-Memory (Runtime)
+  **Structure:** JavaScript Object
+  {
+    deviceId: {prediction data}
+  }
+  
+  ML predictions with emitter control
+  data. Includes snapshot of sensor
+  data used for prediction.
+end note
+
+note left of device
+  **Storage:** Logical Entity
+  **Status:** Not currently implemented
+  in database
+  
+  Represents eNose devices that
+  send sensor data. Could be added
+  for device management.
+end note
+
+note left of emitter
+  **Storage:** Part of Prediction
+  **Format:** JSON embedded in
+  prediction object
+  
+  8-channel PWM control values
+  (0-255) for scent emission.
+end note
+
+note bottom of scent_map
+  **Storage:** Hardcoded in Backend
+  **Location:** predictionService.js
+  
+  Maps scent names to emitter
+  channels and intensities:
+  - cinnamon: Channel 0
+  - gingerbread: Channel 1
+  - norange: Channel 2
+  - vanilla: Channel 3
+end note
+
+legend right
+  |= Symbol |= Description |
+  | <<PK>> | Primary Key |
+  | <<FK>> | Foreign Key |
+  | <<UNIQUE>> | Unique constraint |
+  | * | Required field |
+  | ||--o{ | One to Many |
+  | ||--|| | One to One |
+  
+  **Current Implementation:**
+  - User: SQLite (Persistent)
+  - SensorData: In-Memory (Volatile)
+  - Prediction: In-Memory (Volatile)
+  - Device: Not Implemented
+  - EmitterControl: Embedded in Prediction
+  - ScentMapping: Hardcoded Constants
+endlegend
+
+@enduml

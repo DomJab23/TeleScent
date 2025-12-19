@@ -1,0 +1,183 @@
+@startuml TeleScent Deployment Diagram
+
+skinparam backgroundColor #FFFFFF
+skinparam componentStyle rectangle
+
+title TeleScent System Deployment Diagram
+
+' Physical Devices
+node "eNose Device" as enose_hw <<Hardware>> {
+    component "Arduino Nano ESP32" as esp32 {
+        artifact "main.cpp" as firmware
+        component "Sensor Array" as sensors {
+            component "BME680" as bme680
+            component "SGP41" as sgp41
+            component "GMXXX" as gmxxx
+        }
+        component "GSM Module" as gsm {
+            artifact "SIM800L" as sim800l
+        }
+    }
+}
+
+node "Scent Emitter Device" as emitter_hw <<Hardware>> {
+    component "Arduino Board" as arduino {
+        artifact "BLE Peripheral" as ble_firmware
+        component "PWM Controller" as pwm {
+            artifact "8 Channels" as channels
+        }
+        component "Scent Cartridges" as cartridges
+    }
+}
+
+' Cloud/Server Infrastructure
+node "Server Infrastructure" as server_infra <<Cloud/Local>> {
+    node "Docker Host" as docker_host {
+        component "Docker Engine" as docker {
+            
+            node "Application Container" as app_container <<Container>> {
+                component "Node.js Runtime" as nodejs {
+                    artifact "server.js" as server_js
+                    artifact "Express API" as express_api
+                    component "Routes" as routes
+                    component "Services" as services
+                    component "Models" as models
+                    component "Static File Server" as static_server {
+                        artifact "React Build Files" as react_build
+                    }
+                }
+                database "SQLite DB" as sqlite {
+                    artifact "database.sqlite" as db_file
+                }
+            }
+            
+            node "ML Container" as ml_container <<Container>> {
+                component "Python Runtime" as python {
+                    artifact "serve.py" as serve_py
+                    component "scikit-learn" as sklearn
+                    database "Models" as ml_models {
+                        artifact "scent_pipeline.joblib" as full_model
+                        artifact "simple_2sensor_model.joblib" as simple_model
+                        artifact "label_encoder.joblib" as encoder
+                    }
+                }
+            }
+            
+
+        }
+    }
+}
+
+' Client Devices
+node "User Device" as user_device <<Client>> {
+    component "Web Browser" as browser {
+        artifact "React SPA" as react_spa
+    }
+}
+
+' Network Infrastructure
+cloud "Cellular Network" as cellular {
+    component "Mobile Network" as mobile_net
+}
+
+cloud "Internet" as internet {
+    component "ngrok Tunnel" as ngrok
+}
+
+' Connections - Hardware to Network
+enose_hw --> cellular : "HTTP POST\n(JSON Data)"
+cellular --> internet : "Cellular Data"
+
+' Connections - Internet to Server
+internet --> express_api : "HTTP\nPort 5001/8080"
+ngrok ..> express_api : "Tunnel\n(Optional)"
+
+' Connections - User to Server
+user_device --> internet : "HTTP/HTTPS"
+browser --> react_spa : "Loads"
+
+' Connections - Frontend to Backend
+express_api --> static_server : "Serves React"
+static_server --> react_build
+react_spa ..> express_api : "REST API\nWebSocket/SSE"
+
+' Connections - Backend Internal
+express_api --> routes
+routes --> services
+services --> models
+models --> sqlite
+
+' Connections - Backend to ML
+services --> python : "IPC\nstdin/stdout"
+python --> serve_py
+serve_py --> ml_models
+
+' Connections - Backend to Emitter
+services ..> arduino : "BLE GATT"
+arduino --> pwm
+pwm --> cartridges
+
+' Connections - Sensors
+sensors --> firmware : "I2C/Serial"
+firmware --> gsm
+
+note right of enose_hw
+  **Physical Location:**
+  Field deployment
+  
+  **Power:**
+  Battery/USB powered
+  
+  **Communication:**
+  GSM SIM800L via cellular
+end note
+
+note right of emitter_hw
+  **Physical Location:**
+  User proximity
+  
+  **Power:**
+  AC/DC adapter
+  
+  **Communication:**
+  BLE connection to backend
+end note
+
+note right of docker_host
+  **Deployment Options:**
+  - Local server
+  - Cloud VM (AWS/Azure/GCP)
+  - Docker Compose
+  
+  **Exposed Ports:**
+  - 5001: Application (API + Frontend)
+  - 8080: Alternative port
+  - 4040: ngrok web interface
+  
+  **Note:**
+  Single container serves both
+  API and static frontend files
+end note
+
+note left of user_device
+  **Supported Browsers:**
+  - Chrome
+  - Firefox
+  - Safari
+  - Edge
+  
+  **Platform:**
+  Desktop, Mobile, Tablet
+end note
+
+legend right
+  |= Symbol |= Description |
+  | <<Hardware>> | Physical embedded device |
+  | <<Container>> | Docker container |
+  | <<Cloud/Local>> | Server infrastructure |
+  | <<Client>> | End-user device |
+  | --> | Wired/Direct connection |
+  | ..> | Wireless connection |
+endlegend
+
+@enduml

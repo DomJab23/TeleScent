@@ -1,0 +1,97 @@
+@startuml TeleScent Data Flow Diagram
+
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontSize 11
+skinparam activity {
+    BackgroundColor #E8F5E9
+    BorderColor #424242
+}
+
+title TeleScent System Data Flow Diagram
+
+|eNose Device|
+start
+:Collect Sensor Readings;
+note right
+  BME680, SGP41, GMXXX sensors
+  Temperature, Humidity, VOC, NOx, NO2
+end note
+
+:Format as JSON;
+
+:Send via GSM SIM800L;
+
+|Backend Server|
+
+:Receive POST /api/sensor-data;
+
+:Store in dataStore;
+
+fork
+  :Broadcast via SSE;
+  |Web Frontend|
+  :Update Dashboard;
+  :Display Sensor Values;
+fork again
+  |Backend Server|
+  :Check VOC/NO2 Changes;
+  
+  if (Significant Drop?) then (yes)
+    :Force no_scent;
+  else (no)
+    :Spawn Python Process;
+    
+    |ML Service|
+    
+    :Receive Sensor Data;
+    
+    :Select Model;
+    note right
+      6 sensors: Full model
+      2 sensors: Simple model
+    end note
+    
+    :Run Prediction;
+    
+    :Apply Consecutive Logic;
+    note right
+      Needs 3 consecutive
+      predictions to confirm
+    end note
+    
+    :Return Result;
+    
+    |Backend Server|
+    
+    :Parse ML Prediction;
+  endif
+  
+  :Store Prediction;
+  
+  :Convert to Emitter Control;
+  note right
+    cinnamon: Channel 0
+    gingerbread: Channel 1
+    norange: Channel 2
+    vanilla: Channel 3
+  end note
+  
+  :Send BLE Command;
+  
+  |Scent Emitter|
+  
+  :Receive BLE Command;
+  
+  :Set PWM Values;
+  
+  :Activate Scent Cartridge;
+  
+end fork
+
+|Backend Server|
+
+:Send Response;
+
+stop
+
+@enduml

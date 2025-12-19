@@ -1,0 +1,28 @@
+{
+  "model_type": "RandomForestClassifier",
+  "n_estimators": 100,
+  "max_depth": 20,
+  "features": [
+    "srawVoc",
+    "srawNox",
+    "NO2",
+    "ethanol",
+    "VOC_multichannel",
+    "COandH2"
+  ],
+  "target_column": "scent_name",
+  "classes": [
+    "cinnamon",
+    "gingerbread",
+    "no_scent",
+    "norange",
+    "vanilla"
+  ],
+  "train_accuracy": 0.9998421717171717,
+  "test_accuracy": 0.9722222222222222,
+  "cv_mean_accuracy": 0.9738009755028768,
+  "cv_std_accuracy": 0.003007070551241431,
+  "training_samples": 6336,
+  "test_samples": 1584,
+  "dataset": "NATURAL_ML_Data_with_no_scent.xlsx"
+}

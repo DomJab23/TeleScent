@@ -1,0 +1,80 @@
+@startuml TeleScent Activity Diagram
+
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontSize 10
+
+title TeleScent - Main Activity Flow
+
+start
+
+:User authenticates via JWT;
+
+:eNose collects sensor data;
+note right: BME680, SGP41, GMXXX
+
+:Format as JSON;
+
+:Send via GSM to backend;
+
+:Backend receives POST /api/sensor-data;
+
+if (Valid device_id?) then (yes)
+  
+  :Store in sensorDataStore;
+  
+  split
+    :Broadcast via SSE;
+    :Update frontend dashboard;
+  split again
+    :Check VOC/NO2 changes;
+    
+    if (Drop >=4?) then (yes)
+      :Force no_scent;
+    else (no)
+      :Spawn Python ML process;
+      
+      if (>=4 sensors?) then (6-sensor)
+        :Load full model;
+      else (2-sensor)
+        :Load simple model;
+      endif
+      
+      :Apply calibration;
+      :Feature engineering;
+      :Run prediction;
+      :Return scent + confidence;
+      
+      :Apply consecutive logic;
+      note right: 3x confirmation
+      
+      if (Count >= 3?) then (yes)
+        :Force no_scent;
+      endif
+    endif
+    
+    :Map to emitter channel;
+    :Calculate PWM intensity;
+    :Store in predictionStore;
+    :Broadcast via SSE;
+  end split
+  
+  :Return 200 OK;
+  
+else (no)
+  :Return 400 Bad Request;
+  stop
+endif
+
+:Emitter polls backend;
+
+:GET /api/predictions;
+
+:Receive control JSON;
+
+:Set PWM values;
+
+:Activate scent cartridge;
+
+stop
+
+@enduml
