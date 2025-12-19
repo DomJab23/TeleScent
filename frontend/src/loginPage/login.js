@@ -46,7 +46,7 @@ export default function SignIn(props) {
       navigate('/dashboard');
     } catch (err) {
       console.error('Login error:', err);
-      setError('Failed to connect to server');
+      setError(err.message || 'Failed to connect to server');
     }
   };
 

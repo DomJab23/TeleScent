@@ -1,3 +1,18 @@
+// Mock the prediction service BEFORE requiring the app
+jest.mock('../services/predictionService', () => ({
+  makePrediction: jest.fn().mockResolvedValue({
+    scent: 'lavender',
+    confidence: 0.85,
+    status: 'success'
+  }),
+  getPrediction: jest.fn().mockResolvedValue({
+    predicted_scent: 'lavender',
+    confidence: 0.85,
+    status: 'success'
+  }),
+  scentToEmitterControl: jest.fn((scent) => ({ "0": 100, "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0 }))
+}));
+
 const request = require('supertest');
 const app = require('../server');
 const { sensorDataStore, predictionStore } = require('../services/dataStore');

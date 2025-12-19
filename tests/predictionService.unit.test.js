@@ -4,8 +4,8 @@
 jest.mock('child_process');
 
 const { spawn } = require('child_process');
-const { scentToEmitterControl, processSensorData, getPrediction } = require('../backend/services/predictionService');
-const { sensorDataStore, predictionStore } = require('../backend/services/dataStore');
+const { scentToEmitterControl, processSensorData, getPrediction } = require('../services/predictionService');
+const { sensorDataStore, predictionStore } = require('../services/dataStore');
 
 // Helper to reset in-memory stores
 function resetStores() {
@@ -21,9 +21,9 @@ describe('predictionService utils', () => {
 
   test('scentToEmitterControl maps scent to correct channel and scales intensity', () => {
     const control = scentToEmitterControl('banana', 0.5);
-    expect(control['0']).toBeGreaterThanOrEqual(100);
+    expect(control['5']).toBeGreaterThanOrEqual(100); // banana is on channel 5
+    expect(control['0']).toBe(0);
     expect(control['1']).toBe(0);
-    expect(control['2']).toBe(0);
   });
 
   test('scentToEmitterControl returns all zeros for unknown scent', () => {

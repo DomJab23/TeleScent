@@ -1,7 +1,23 @@
 // API Configuration Helper for Internet Access
 // Place this file at: frontend/src/config/apiConfig.js
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+// Auto-detect API URL based on current location
+const getApiUrl = () => {
+  // If REACT_APP_API_URL is set, use it
+  if (process.env.REACT_APP_API_URL) {
+    return process.env.REACT_APP_API_URL;
+  }
+  
+  // If we're on ngrok (or any remote domain), use the same origin
+  if (window.location.hostname.includes('ngrok')) {
+    return window.location.origin;
+  }
+  
+  // Default to localhost for local development
+  return 'http://localhost:5001';
+};
+
+const API_URL = getApiUrl();
 const DEBUG = process.env.REACT_APP_DEBUG === 'true';
 
 export const apiConfig = {
