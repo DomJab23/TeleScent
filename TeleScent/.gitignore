@@ -154,6 +154,11 @@ ehthumbs.db
 *.db
 database.sqlite
 
+# Collected data files (sensor data, CSV exports)
+collected_sensor_data.csv
+collected_data/
+*.csv
+
 # Backup files
 *.bak
 *.backup
