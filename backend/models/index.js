@@ -1,5 +1,6 @@
 const { sequelize } = require('./database');
 const User = require('./User');
+const SensorData = require('./SensorData');
 
 // Initialize all models
 const initializeDatabase = async () => {
@@ -15,5 +16,6 @@ const initializeDatabase = async () => {
 module.exports = {
   sequelize,
   User,
+  SensorData,
   initializeDatabase,
 };

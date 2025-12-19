@@ -196,6 +196,60 @@ router.post('/', async (req, res) => {
     };
     console.log(`✅ Prediction stored for ${deviceId}:`, emitterControl);
 
+    // Save to database and CSV
+    try {
+      const { SensorData } = require('../models');
+      const { appendToCsv } = require('../services/csvExporter');
+      
+      // Extract sensor values from body or dataEntry
+      const sensorValues = req.body.sensorValues || [
+        dataEntry.temperature,
+        dataEntry.humidity,
+        dataEntry.pressure,
+        dataEntry.gas,
+        dataEntry.voc,
+        dataEntry.no2
+      ];
+      
+      // Save to database
+      const dbRecord = await SensorData.create({
+        deviceId: dataEntry.deviceId,
+        scent: req.body.scent || null,  // From collection script
+        timestamp: new Date(dataEntry.timestamp),
+        sensorValues: sensorValues,
+        sensor0: sensorValues[0] || null,
+        sensor1: sensorValues[1] || null,
+        sensor2: sensorValues[2] || null,
+        sensor3: sensorValues[3] || null,
+        sensor4: sensorValues[4] || null,
+        sensor5: sensorValues[5] || null,
+        predictedScent: finalScent,
+        confidence: finalConfidence,
+      });
+      
+      console.log(`💾 Saved to database: ID ${dbRecord.id}`);
+      
+      // Save to CSV
+      await appendToCsv({
+        id: dbRecord.id,
+        deviceId: dbRecord.deviceId,
+        scent: dbRecord.scent || '',
+        timestamp: dbRecord.timestamp,
+        sensor0: dbRecord.sensor0,
+        sensor1: dbRecord.sensor1,
+        sensor2: dbRecord.sensor2,
+        sensor3: dbRecord.sensor3,
+        sensor4: dbRecord.sensor4,
+        sensor5: dbRecord.sensor5,
+        predictedScent: dbRecord.predictedScent || '',
+        confidence: dbRecord.confidence || '',
+        createdAt: dbRecord.createdAt,
+      });
+    } catch (saveError) {
+      console.error('⚠️  Error saving to database/CSV:', saveError);
+      // Continue even if save fails
+    }
+
     // Broadcast new reading to all connected SSE clients
     try {
       const payload = JSON.stringify({ type: 'sensor', data: dataEntry });
