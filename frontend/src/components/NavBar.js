@@ -28,8 +28,7 @@ export default function NavBar() {
     { label: 'Dashboard', path: '/dashboard' },
     { label: 'Sensor Data', path: '/sensor-data' },
     { label: 'ML Console', path: '/ml' },
-    { label: 'Testing', path: '/testing' },
-    { label: 'Emitter', path: '/emitter' },
+    { label: 'Testing', path: '/testing' }
   ];
 
   const currentPath = pages.some((p) => p.path === location.pathname)

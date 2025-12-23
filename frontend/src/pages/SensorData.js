@@ -168,9 +168,6 @@ export default function SensorData() {
             <SensorsIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
             Real-Time Sensor Data & ML Predictions
           </Typography>
-          <Typography color="text.secondary">
-            Live sensor readings from Arduino devices with AI-powered scent detection
-          </Typography>
         </Box>
         <Box>
           <Tooltip title={liveUpdates ? 'Live updates ON (SSE)' : 'Live updates OFF'}>

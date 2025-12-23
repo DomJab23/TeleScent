@@ -115,9 +115,6 @@ export default function TestingConsole() {
       <Typography variant="h4" gutterBottom>
         Backend API Test Console
       </Typography>
-      <Typography color="text.secondary" sx={{ mb: 2 }}>
-        Test backend API connection, send sensor data, and view responses in real-time.
-      </Typography>
 
       <Paper sx={{ p: 2, mb: 2 }} elevation={2}>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">

@@ -121,9 +121,6 @@ export default function MLConsole() {
             Machine Learning Console
           </Typography>
         </Box>
-        <Typography color="text.secondary">
-          Real-time ML model status, predictions, and dataset information
-        </Typography>
       </Box>
 
       {/* Auto-refresh control */}
@@ -351,7 +348,7 @@ export default function MLConsole() {
               • Model is served by Python script at <code>ml/serve.py</code>
               <br />• Training performed in <code>ml/scentdetection.ipynb</code>
               <br />• To retrain: Run the Jupyter notebook with your dataset
-              <br />• Expected accuracy: 85-95% on 12 scent classes
+              <br />• Expected accuracy: 85-95% on scent classes
               <br />• Best performance during exposure phase when sensors respond strongest
             </Typography>
           </Alert>

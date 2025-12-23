@@ -184,12 +184,8 @@ export default function Dashboard() {
     <Container component="main" maxWidth="lg">
       <Box sx={{ marginTop: 4, mb: 4 }}>
         <Typography variant="h4" component="h1" gutterBottom>
-          Dashboard (Home Page)
+          Dashboard
         </Typography>
-        <Typography color="text.secondary" sx={{ mb: 2 }}>
-          Purpose: Give an overview of the system’s current state and quick access to major functions.
-        </Typography>
-
   <Grid container spacing={3} alignItems="stretch" sx={{ minHeight: '60vh' }}>
           {/* Left column: System status and Real-time readings */}
           <Grid item xs={12} md={4} sx={{ display: 'flex', flexDirection: 'column' }}>
@@ -206,7 +202,7 @@ export default function Dashboard() {
             <Paper sx={{ p: 2, flex: 1, display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
               <Typography variant="h6">Real-time readings summary</Typography>
               <Box sx={{ mt: 2 }}>
-                <Typography variant="body2">Odor intensity</Typography>
+                <Typography variant="body2">Smell intensity</Typography>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
                   <Box sx={{ flex: 1 }}>
                     <LinearProgress variant="determinate" value={readings.odorIntensity} />
