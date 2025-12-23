@@ -4,7 +4,6 @@ import SignIn from './loginPage/login';
 import Dashboard from './pages/Dashboard';
 import Testing from './pages/Testing';
 import MLConsole from './pages/MLConsole';
-import EmitterSetup from './pages/EmitterSetup';
 import Register from './pages/Register';
 import SensorData from './pages/SensorData';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -36,14 +35,6 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <MLConsole />
-          </ProtectedRoute>
-        } 
-      />
-      <Route 
-        path="/emitter" 
-        element={
-          <ProtectedRoute>
-            <EmitterSetup />
           </ProtectedRoute>
         } 
       />
