@@ -23,14 +23,14 @@ RUN curl -LO https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tg
     rm ngrok-v3-stable-linux-amd64.tgz
 
 # Copy frontend package files first
-COPY TeleScent/frontend/package*.json /tmp/frontend/
+COPY frontend/package*.json /tmp/frontend/
 
 # Install frontend dependencies and build
 WORKDIR /tmp/frontend
 RUN npm install
 
 # Copy frontend source code
-COPY TeleScent/frontend/ /tmp/frontend/
+COPY frontend/ /tmp/frontend/
 
 # Build the frontend
 RUN npm run build
@@ -39,20 +39,20 @@ RUN npm run build
 WORKDIR /app
 
 # Copy backend package files
-COPY TeleScent/backend/package*.json ./
+COPY backend/package*.json ./
 
 # Install backend dependencies with proper build tools
 RUN npm install --save-dev node-gyp && npm install
 
 # Copy backend source code
-COPY TeleScent/backend/ .
+COPY backend/ .
 
 # Copy the built frontend to the correct location (../frontend/build relative to backend)
 RUN mkdir -p ../frontend/build
 RUN cp -r /tmp/frontend/build/* ../frontend/build/
 
 # Copy ML directory and install Python dependencies
-COPY TeleScent/ml/ ../ml/
+COPY ml/ ../ml/
 RUN python3 -m venv /app/venv && \
     /app/venv/bin/pip install --upgrade pip && \
     /app/venv/bin/pip install scikit-learn==1.7.2 joblib pandas numpy

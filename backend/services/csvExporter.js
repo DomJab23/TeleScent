@@ -1,36 +1,29 @@
 // services/csvExporter.js
 const fs = require('fs');
 const path = require('path');
-const { createObjectCsvWriter } = require('csv-writer');
 
 const CSV_DIR = path.join(__dirname, '../../collected_data');
 const CSV_FILE = path.join(CSV_DIR, 'sensor_data.csv');
+
+// CSV header
+const CSV_HEADER = 'ID,Device ID,Scent,Timestamp,Sensor 0,Sensor 1,Sensor 2,Sensor 3,Sensor 4,Sensor 5,Predicted Scent,Confidence,Created At\n';
 
 // Ensure CSV directory exists
 if (!fs.existsSync(CSV_DIR)) {
   fs.mkdirSync(CSV_DIR, { recursive: true });
 }
 
-// Create CSV writer
-const csvWriter = createObjectCsvWriter({
-  path: CSV_FILE,
-  header: [
-    { id: 'id', title: 'ID' },
-    { id: 'deviceId', title: 'Device ID' },
-    { id: 'scent', title: 'Scent' },
-    { id: 'timestamp', title: 'Timestamp' },
-    { id: 'sensor0', title: 'Sensor 0' },
-    { id: 'sensor1', title: 'Sensor 1' },
-    { id: 'sensor2', title: 'Sensor 2' },
-    { id: 'sensor3', title: 'Sensor 3' },
-    { id: 'sensor4', title: 'Sensor 4' },
-    { id: 'sensor5', title: 'Sensor 5' },
-    { id: 'predictedScent', title: 'Predicted Scent' },
-    { id: 'confidence', title: 'Confidence' },
-    { id: 'createdAt', title: 'Created At' },
-  ],
-  append: true, // Append to existing file
-});
+/**
+ * Escape CSV field (handle commas, quotes, newlines)
+ */
+function escapeCsvField(field) {
+  if (field === null || field === undefined) return '';
+  const str = String(field);
+  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
 
 /**
  * Append sensor data to CSV file
@@ -38,14 +31,32 @@ const csvWriter = createObjectCsvWriter({
  */
 async function appendToCsv(sensorData) {
   try {
-    // Check if file exists, if not write header
-    if (!fs.existsSync(CSV_FILE)) {
-      // First write - create file with header
-      await csvWriter.writeRecords([sensorData]);
-    } else {
-      // Append to existing file
-      await csvWriter.writeRecords([sensorData]);
+    const fileExists = fs.existsSync(CSV_FILE);
+    
+    // Write header if file doesn't exist
+    if (!fileExists) {
+      fs.writeFileSync(CSV_FILE, CSV_HEADER);
     }
+    
+    // Create CSV row
+    const row = [
+      escapeCsvField(sensorData.id),
+      escapeCsvField(sensorData.deviceId),
+      escapeCsvField(sensorData.scent),
+      escapeCsvField(sensorData.timestamp),
+      escapeCsvField(sensorData.sensor0),
+      escapeCsvField(sensorData.sensor1),
+      escapeCsvField(sensorData.sensor2),
+      escapeCsvField(sensorData.sensor3),
+      escapeCsvField(sensorData.sensor4),
+      escapeCsvField(sensorData.sensor5),
+      escapeCsvField(sensorData.predictedScent),
+      escapeCsvField(sensorData.confidence),
+      escapeCsvField(sensorData.createdAt),
+    ].join(',') + '\n';
+    
+    // Append to file
+    fs.appendFileSync(CSV_FILE, row);
     
     console.log(`📝 Appended to CSV: ${CSV_FILE}`);
     return true;

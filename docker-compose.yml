@@ -14,7 +14,7 @@ services:
       # ngrok authtoken for tunnel access
       NGROK_AUTHTOKEN: "36HvhW2kJBsLK1QBQF1vMjh7wna_cJYWXZTWWFg6PpKEvZi3"
     volumes:
-      - ./TeleScent/backend/database.sqlite:/app/database.sqlite
+      - ./backend/database.sqlite:/app/database.sqlite
       - ./collected_data:/collected_data
     networks:
       - telescent-network
