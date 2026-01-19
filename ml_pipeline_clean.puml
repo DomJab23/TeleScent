@@ -1,0 +1,120 @@
+@startuml TeleScent ML Pipeline
+!theme cyborg
+skinparam backgroundColor #1E1E1E
+skinparam defaultFontColor #FFFFFF
+title <color:#FFFFFF>TeleScent - Machine Learning Pipeline</color>
+
+skinparam rectangle {
+    roundCorner 10
+    FontColor #FFFFFF
+}
+
+skinparam arrow {
+    Color #9E9E9E
+    FontColor #FFFFFF
+}
+
+' Phase 1: Data Collection
+rectangle "**Phase 1: Data Collection**" as phase1 #252525 {
+    rectangle "IoT Sensors (ESP32)\n━━━━━━━━━━━━━━\nVOC, NOx, NO2\nEthanol, Temp, Humidity" as sensors #4A148C
+    rectangle "Raw Data Collection\ncollect_labeled_data.py" as collect #4A148C
+    rectangle "Training Dataset\nNATURAL_ML_Data.xlsx\n━━━━━━━━━━━━━━\nCinnamon | Gingerbread\nOrange | Vanilla | No scent" as dataset #4A148C
+}
+
+' Phase 2: Training
+rectangle "**Phase 2: Model Training**" as phase2 #252525 {
+    rectangle "Feature Engineering\n━━━━━━━━━━━━━━\n6-Sensor Pipeline\n2-Sensor Simple" as features #1B5E20
+    rectangle "Random Forest Training\ntrain_simple_model.py\n━━━━━━━━━━━━━━\n200 trees | 80/20 split\nCross Validation" as training #1B5E20
+    rectangle "Model Evaluation\n━━━━━━━━━━━━━━\nAccuracy: 95%+\nPrecision/Recall\nConfusion Matrix" as evaluation #1B5E20
+}
+
+' Phase 3: Storage
+rectangle "**Phase 3: Model Persistence**" as phase3 #252525 {
+    rectangle "Trained Models (/ml/model)\n━━━━━━━━━━━━━━\nscent_pipeline_best.joblib (6-sensor)\nsimple_2sensor_model.joblib (2-sensor)\nlabel_encoder_best.joblib\nmodel_metadata.json" as models #4A3200
+}
+
+' Phase 4: Inference
+rectangle "**Phase 4: Real-Time Inference**" as phase4 #252525 {
+    rectangle "Inference Service\nserve.py\n━━━━━━━━━━━━━━\nLoad Models (joblib)\nAuto-detect Sensors\nPreprocessing" as serve #1E3A5F
+    rectangle "Prediction Engine\n━━━━━━━━━━━━━━\n6-Sensor OR 2-Sensor\nConfidence Scoring\nClassification" as predict #1E3A5F
+    rectangle "JSON Result\n━━━━━━━━━━━━━━\nPredicted Scent\nConfidence %\nProbabilities" as result #1E3A5F
+}
+
+' Flow arrows
+sensors -down-> collect : "Stream\nreadings"
+collect -down-> dataset : "Label &\ncompile"
+dataset -right-> features : "Load"
+features -down-> training : "Features"
+training -down-> evaluation : "Model"
+evaluation -right-> models : "Save\n(joblib)"
+
+models -down-> serve : "Load at\nstartup"
+sensors -right-> serve : "Real-time\ndata"
+serve -down-> predict : "Preprocess"
+predict -down-> result : "Classify"
+
+' Notes
+note right of sensors
+  <b>Sensor Data:</b>
+  • VOC_multichannel (ppm)
+  • srawVoc, srawNox (raw)
+  • NO2, Ethanol, COandH2 (ppm)
+  • Temp (°C), Humidity (%)
+  
+  <b>Rate:</b> 1 reading/second
+end note
+
+note right of training
+  <b>Algorithm:</b>
+  • Random Forest (200 trees)
+  • Max depth: 15
+  • Balanced class weights
+  
+  <b>Training:</b> ~2-3 seconds
+  <b>Model Size:</b> ~500KB
+end note
+
+note right of evaluation
+  <b>Metrics:</b>
+  • Accuracy: 95-98%
+  • Precision: 94-97%
+  • Recall: 93-96%
+  • F1-Score: 94-96%
+  
+  <b>Validation:</b> 5-fold CV
+end note
+
+note right of models
+  <b>Two Models:</b>
+  
+  1. Full (6 sensors)
+     • Higher accuracy
+     • Production use
+  
+  2. Simple (2 sensors)
+     • Faster inference
+     • Embedded systems
+end note
+
+note right of predict
+  <b>Smart Selection:</b>
+  • 4+ sensors → Full model
+  • 2 sensors → Simple model
+  • Auto-detect available sensors
+  
+  <b>Performance:</b>
+  • Inference: <50ms
+  • JSON output
+end note
+
+note bottom of result
+  <b>Output Format:</b>
+  {
+    "predicted_scent": "vanilla",
+    "confidence": 0.95,
+    "probabilities": {...},
+    "model_used": "full_6sensor"
+  }
+end note
+
+@enduml

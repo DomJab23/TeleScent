@@ -9,6 +9,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     curl \
     bash \
+    openssh-client \
     python3 \
     python3-venv \
     python3-pip \
@@ -17,7 +18,7 @@ RUN apt-get update && apt-get install -y \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Download and install ngrok
+# Note: ngrok is kept for backward compatibility, but we now use localhost.run tunnel via SSH
 RUN curl -LO https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz && \
     tar xzf ngrok-v3-stable-linux-amd64.tgz -C /usr/local/bin && \
     rm ngrok-v3-stable-linux-amd64.tgz

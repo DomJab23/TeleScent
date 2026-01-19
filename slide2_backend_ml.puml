@@ -1,0 +1,85 @@
+@startuml TeleScent Slide 2 - Backend & ML
+!theme cyborg
+skinparam backgroundColor #1E1E1E
+title <color:#FFFFFF>Backend API & Machine Learning Intelligence</color>
+
+skinparam component {
+    BackgroundColor<<backend>> #4A3200
+    BorderColor<<backend>> #FFB74D
+    FontColor<<backend>> #FFFFFF
+    BackgroundColor<<ml>> #1B5E20
+    BorderColor<<ml>> #81C784
+    FontColor<<ml>> #FFFFFF
+}
+
+skinparam note {
+    BackgroundColor #2C2C2C
+    BorderColor #757575
+    FontColor #FFFFFF
+}
+
+skinparam arrow {
+    Color #9E9E9E
+    FontColor #FFFFFF
+}
+
+skinparam package {
+    BackgroundColor #252525
+    BorderColor #616161
+    FontColor #FFFFFF
+}
+
+package "Backend Layer" {
+    component "Express.js API Server\n(Port 5001)" as backend <<backend>> {
+        [Auth Routes\nJWT Authentication]
+        [Sensor Data Routes\nData ingestion]
+        [Predictions Routes\nML interface]
+        [Stats Routes\nAnalytics]
+    }
+}
+
+package "ML Service Layer" {
+    component "Python ML Engine\n(serve.py)" as ml <<ml>> {
+        [Model Inference]
+        [Feature Engineering]
+        [Prediction Pipeline]
+    }
+    
+    component "Trained Models" as models <<ml>> {
+        [6-Sensor Full Pipeline\nscikit-learn]
+        [2-Sensor Simple Model\nLightweight]
+        [Label Encoder\nScent classification]
+    }
+}
+
+backend <--> ml : "Subprocess\nJSON I/O"
+ml --> models : "Load & Infer\n(joblib)"
+
+note right of backend
+  <b>Backend Features:</b>
+  - RESTful API design
+  - JWT authentication
+  - CORS enabled
+  - Docker containerized
+  - Sequelize ORM
+  - Real-time processing
+end note
+
+note right of ml
+  <b>ML Capabilities:</b>
+  - scikit-learn models
+  - 95%+ accuracy
+  - Real-time predictions
+  - Multi-sensor fusion
+  - Feature: VOC, NOx, NO2,
+    Ethanol, Temp, Humidity
+end note
+
+note bottom of models
+  <b>Model Types:</b>
+  - Full: 6 sensors, high accuracy
+  - Simple: 2 sensors, fast inference
+  - Both: Production-ready
+end note
+
+@enduml

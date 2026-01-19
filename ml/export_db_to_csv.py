@@ -23,21 +23,21 @@ def export_sensor_data_to_csv():
             SELECT 
                 id,
                 deviceId,
+                scent,
                 timestamp,
-                temperature,
-                humidity,
-                pressure,
-                gas,
-                voc_raw,
-                nox_raw,
-                no2,
-                ethanol,
-                voc,
-                co_h2,
-                receivedAt,
-                userId
+                sensorValues,
+                sensor0,
+                sensor1,
+                sensor2,
+                sensor3,
+                sensor4,
+                sensor5,
+                predictedScent,
+                confidence,
+                createdAt,
+                updatedAt
             FROM sensor_data
-            ORDER BY receivedAt ASC
+            ORDER BY createdAt ASC
         """)
         
         rows = cursor.fetchall()
@@ -50,14 +50,15 @@ def export_sensor_data_to_csv():
         print(f"✅ Found {len(rows)} sensor readings in database")
         
         # Write to CSV
-        with open(OUTPUT_FILE, 'w', newline='') as csvfile:
+        with open(OUTPUT_FILE, 'w', newline='', encoding='utf-8') as csvfile:
             # Define column names
             fieldnames = [
-                'id', 'deviceId', 'timestamp', 
-                'temperature', 'humidity', 'pressure', 
-                'gas', 'voc_raw', 'nox_raw', 
-                'no2', 'ethanol', 'voc', 'co_h2',
-                'receivedAt', 'userId'
+                'id', 'deviceId', 'scent', 'timestamp', 
+                'sensorValues',
+                'sensor0', 'sensor1', 'sensor2', 
+                'sensor3', 'sensor4', 'sensor5',
+                'predictedScent', 'confidence',
+                'createdAt', 'updatedAt'
             ]
             
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)

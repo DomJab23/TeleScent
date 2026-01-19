@@ -1,0 +1,45 @@
+@startuml TeleScent ML - Single Slide
+!theme cyborg
+skinparam backgroundColor #1E1E1E
+title <color:#FFFFFF>ML Pipeline: Training & Inference</color>
+
+skinparam defaultFontColor #FFFFFF
+left to right direction
+
+' Training Path
+rectangle "Training Pipeline" #252525 {
+    rectangle "Sensor\nData" as data1 #4A148C
+    rectangle "Train\nModel" as train #1B5E20
+    rectangle "Save\nModels" as save #4A3200
+    
+    data1 -right-> train
+    train -right-> save
+}
+
+' Inference Path  
+rectangle "Production Inference" #252525 {
+    rectangle "Live\nSensors" as data2 #1E3A5F
+    rectangle "Load\nModel" as load #1E3A5F
+    rectangle "Predict\nScent" as predict #1E3A5F
+    
+    data2 -right-> load
+    load -right-> predict
+}
+
+save -down-> load : "Deploy"
+
+note right of train
+  <b>Random Forest</b>
+  • 200 trees
+  • 95%+ accuracy
+  • 2-3 sec training
+end note
+
+note right of predict
+  <b>Real-Time</b>
+  • <50ms response
+  • 6 or 2 sensors
+  • Auto-detection
+end note
+
+@enduml

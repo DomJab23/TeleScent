@@ -58,35 +58,20 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// Login user (accepts username or email)
+// Login user (accepts username or email) - BYPASS MODE FOR TESTING
 router.post('/login', async (req, res) => {
   try {
-    const { username, email, password } = req.body;
-    const loginIdentifier = username || email;
-
-    // Validate required fields
-    if (!loginIdentifier || !password) {
-      return res.status(400).json({ 
-        message: 'Username/email and password are required' 
-      });
-    }
-
-    // Find user by username or email
-    const user = await User.findOne({ 
-      where: username ? { username } : { email } 
-    });
+    // AUTO-LOGIN: Just find or create admin user and log them in
+    let user = await User.findOne({ where: { username: 'admin' } });
     
     if (!user) {
-      return res.status(401).json({ 
-        message: 'Invalid username or password' 
-      });
-    }
-
-    // Check password
-    const isPasswordValid = await user.comparePassword(password);
-    if (!isPasswordValid) {
-      return res.status(401).json({ 
-        message: 'Invalid username or password' 
+      // Create admin user if doesn't exist
+      user = await User.create({
+        username: 'admin',
+        email: 'admin@telescent.com',
+        password: 'admin',
+        firstName: 'Admin',
+        lastName: 'User',
       });
     }
 
@@ -94,7 +79,7 @@ router.post('/login', async (req, res) => {
     const token = generateToken(user.id);
 
     res.json({
-      message: 'Login successful',
+      message: 'Auto-login successful',
       user: user.toJSON(),
       token,
     });

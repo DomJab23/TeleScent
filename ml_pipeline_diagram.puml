@@ -1,0 +1,166 @@
+@startuml TeleScent ML Pipeline
+!theme cyborg
+skinparam backgroundColor #1E1E1E
+title <color:#FFFFFF>TeleScent - Machine Learning Pipeline & Workflow</color>
+
+skinparam rectangle {
+    BackgroundColor #2C2C2C
+    BorderColor #757575
+    FontColor #FFFFFF
+    roundCorner 10
+}
+
+skinparam note {
+    BackgroundColor #2C2C2C
+    BorderColor #757575
+    FontColor #FFFFFF
+}
+
+skinparam arrow {
+    Color #9E9E9E
+    FontColor #FFFFFF
+}
+
+skinparam package {
+    BackgroundColor #252525
+    BorderColor #616161
+    FontColor #FFFFFF
+}
+
+' Data Collection Phase
+package "Phase 1: Data Collection" #252525 {
+    rectangle "IoT Sensors\n(ESP32)\n\nVOC, NOx, NO2\nEthanol, Temp\nHumidity" as sensors #4A148C
+    
+    rectangle "Raw Data Collection\n(collect_labeled_data.py)" as raw_data #4A148C
+    
+    rectangle "Training Dataset\n(NATURAL_ML_Data.xlsx)\n\nCinnamon\nGingerbread\nOrange\nVanilla\nNo scent" as dataset #4A148C
+}
+
+' Training Phase
+package "Phase 2: Model Training" #252525 {
+    rectangle "Feature Engineering\n\n6-Sensor Pipeline\n2-Sensor Simple\nFeature Selection\nNormalization" as features #1B5E20
+    
+    rectangle "Model Training\n(train_simple_model.py)\n\nRandom Forest\nTrain/Test 80/20\nCross Validation\nHyperparameter Tuning" as training #1B5E20
+    
+    rectangle "Model Evaluation\n\nAccuracy: 95%+\nPrecision/Recall\nConfusion Matrix\nFeature Importance" as evaluation #1B5E20
+}
+
+' Model Storage
+package "Phase 3: Model Persistence" #252525 {
+    rectangle "Trained Models\n(/ml/model)\n\nscent_pipeline_best.joblib\nsimple_2sensor_model.joblib\nlabel_encoder_best.joblib\nmodel_metadata.json" as models #4A3200
+}
+
+' Inference Phase
+package "Phase 4: Real-Time Inference" #252525 {
+    rectangle "Inference Service\n(serve.py)\n\nLoad Models (joblib)\nPreprocessing\nAuto-detect Sensors" as serve #1E3A5F
+    
+    rectangle "Prediction Engine\n\n6-Sensor Prediction\n2-Sensor Prediction\nConfidence Score\nClassification" as prediction #1E3A5F
+    
+    rectangle "Prediction Result\n\nPredicted Scent\nConfidence %\nProbabilities\nTimestamp" as result #1E3A5F
+}
+
+' Data Flow Arrows
+sensors -down-> raw_data : "Stream sensor\nreadings"
+raw_data -down-> dataset : "Label & compile\ntraining data"
+dataset -right-> features : "Load & preprocess"
+features -down-> training : "Engineered features"
+training -down-> evaluation : "Trained model"
+evaluation -right-> models : "Save best model\n(joblib)"
+
+models -right-> serve : "Load at startup"
+sensors -right-> serve : "Real-time sensor\ndata (JSON)"
+serve -down-> prediction : "Preprocessed data"
+prediction -down-> result : "Classification"
+
+' Notes with detailed information
+note right of sensors
+  <b>Sensor Data Format:</b>
+  - VOC_multichannel (ppm)
+  - srawVoc (raw voltage)
+  - srawNox (raw voltage)
+  - NO2 (ppm)
+  - Ethanol (ppm)
+  - COandH2 (ppm)
+  - Temperature (°C)
+  - Humidity (%)
+  <b>Sampling Rate:</b>
+  - 1 reading/second
+  - Real-time streaming
+end note
+
+note bottom of dataset
+  <b>Dataset Statistics:</b>
+  - 5 classes total
+  - Balanced samples
+  - Multiple sessions
+  - Natural conditions
+  - Environmental variations
+  <b>Format:</b> Excel/CSV
+end note
+
+note right of training
+  <b>Training Algorithm:</b>
+  - Random Forest (200 trees)
+  - Max depth: 15
+  - Min samples split: 5
+  - Class weight: balanced
+  <b>Training Time:</b> ~2-3 seconds
+  <b>Model Size:</b> ~500KB
+end note
+
+note left of evaluation
+  <b>Performance Metrics:</b>
+  - Accuracy: 95-98%
+  - Precision: 94-97%
+  - Recall: 93-96%
+  - F1-Score: 94-96%
+  <b>Cross Validation:</b>
+  - 5-fold CV
+  - Stratified splits
+end note
+
+note bottom of models
+  <b>Model Types:</b>
+  1. Full Model (6 sensors)
+     - Higher accuracy
+     - More features
+     - Best for production
+  
+  2. Simple Model (2 sensors)
+     - Faster inference
+     - Less data needed
+     - Embedded systems
+end note
+
+note right of prediction
+  <b>Inference Logic:</b>
+  1. Auto-detect available sensors
+  2. Select appropriate model:
+     - 4+ sensors → Full model
+     - 2 sensors → Simple model
+  3. Preprocess with smart defaults
+  4. Generate prediction
+  5. Calculate confidence
+  
+  <b>Performance:</b>
+  - Inference time: <50ms
+  - Subprocess call overhead
+  - JSON serialization
+end note
+
+note left of result
+  <b>Output Format (JSON):</b>
+  {
+    "predicted_scent": "vanilla",
+    "confidence": 0.95,
+    "probabilities": {
+      "vanilla": 0.95,
+      "cinnamon": 0.03,
+      "norange": 0.01,
+      ...
+    },
+    "model_used": "full_6sensor"
+  }
+end note
+
+@enduml

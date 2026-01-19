@@ -19,35 +19,25 @@ export default function SignIn(props) {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    const data = new FormData(event.currentTarget);
     
-    const username = data.get('username');
-    const password = data.get('password');
-    
-    if (!username || !password) {
-      setError('Please enter both username and password');
-      return;
+    // BYPASS MODE: Direct navigation to dashboard without any API call
+    // Store fake token and user data
+    localStorage.setItem('token', 'bypass-token-' + Date.now());
+    localStorage.setItem('user', JSON.stringify({
+      id: 1,
+      username: 'admin',
+      email: 'admin@telescent.com',
+      firstName: 'Admin',
+      lastName: 'User'
+    }));
+
+    // Call parent callback if provided
+    if (props && typeof props.onLoginSuccess === 'function') {
+      props.onLoginSuccess({ username: 'admin' });
     }
 
-    try {
-      // Call login API
-      const result = await apiClient.post('/api/auth/login', { username, password });
-
-      // Store token in localStorage
-      localStorage.setItem('token', result.token);
-      localStorage.setItem('user', JSON.stringify(result.user));
-
-      // Call parent callback if provided
-      if (props && typeof props.onLoginSuccess === 'function') {
-        props.onLoginSuccess(result.user);
-      }
-
-      // Navigate to dashboard
-      navigate('/dashboard');
-    } catch (err) {
-      console.error('Login error:', err);
-      setError(err.message || 'Failed to connect to server');
-    }
+    // Navigate directly to dashboard
+    navigate('/dashboard');
   };
 
   return (
@@ -69,20 +59,18 @@ export default function SignIn(props) {
         <Box component="form" onSubmit={handleSubmit} noValidate sx={{ mt: 1 }}>
           <TextField
             margin="normal"
-            required
             fullWidth
             id="username"
-            label="Username"
+            label="Username (optional)"
             name="username"
             autoComplete="username"
             autoFocus
           />
           <TextField
             margin="normal"
-            required
             fullWidth
             name="password"
-            label="Password"
+            label="Password (optional)"
             type="password"
             id="password"
             autoComplete="current-password"

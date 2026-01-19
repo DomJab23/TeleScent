@@ -8,8 +8,10 @@ const getApiUrl = () => {
     return process.env.REACT_APP_API_URL;
   }
   
-  // If we're on ngrok (or any remote domain), use the same origin
-  if (window.location.hostname.includes('ngrok')) {
+  // If we're on a tunnel service (ngrok, localhost.run, serveo, etc), use the same origin
+  if (window.location.hostname.includes('ngrok') || 
+      window.location.hostname.includes('lhr.life') || 
+      window.location.hostname.includes('serveo')) {
     return window.location.origin;
   }
   

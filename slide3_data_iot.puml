@@ -1,0 +1,116 @@
+@startuml TeleScent Slide 3 - Data & IoT
+!theme cyborg
+skinparam backgroundColor #1E1E1E
+title <color:#FFFFFF>Slide 3: Data Storage & IoT Integration</color>
+
+skinparam component {
+    BackgroundColor<<data>> #4A148C
+    BorderColor<<data>> #BA68C8
+    FontColor<<data>> #FFFFFF
+    BackgroundColor<<external>> #B71C1C
+    BorderColor<<external>> #EF5350
+    FontColor<<external>> #FFFFFF
+    BackgroundColor<<backend>> #4A3200
+    BorderColor<<backend>> #FFB74D
+    FontColor<<backend>> #FFFFFF
+}
+
+skinparam note {
+    BackgroundColor #2C2C2C
+    BorderColor #757575
+    FontColor #FFFFFF
+}
+
+skinparam arrow {
+    Color #9E9E9E
+    FontColor #FFFFFF
+}
+
+skinparam package {
+    BackgroundColor #252525
+    BorderColor #616161
+    FontColor #FFFFFF
+}
+
+skinparam database {
+    BackgroundColor #4A148C
+    BorderColor #BA68C8
+    FontColor #FFFFFF
+}
+
+skinparam storage {
+    BackgroundColor #4A148C
+    BorderColor #BA68C8
+    FontColor #FFFFFF
+}
+
+package "Data Persistence Layer" {
+    database "SQLite Database\n(database.sqlite)" as db <<data>> {
+        [Users Table\nAuthentication]
+        [Sensor Data Table\nRaw readings]
+        [Predictions Table\nML results]
+    }
+    
+    storage "CSV Files\n(/collected_data)" as csv <<data>> {
+        [sensor_data.csv\nExport]
+        [Training Datasets\nML pipeline]
+    }
+}
+
+package "IoT & External Services" {
+    component "ESP32 Sensor Array" as sensors <<external>> {
+        [VOC Sensor]
+        [NOx Sensor]
+        [NO2 Sensor]
+        [Ethanol Sensor]
+        [Temp/Humidity]
+    }
+    
+    component "Ngrok Tunnel\n(Port 4040)" as ngrok <<external>>
+}
+
+component "Backend API\n(Port 5001)" as backend <<backend>>
+
+sensors --> ngrok : "HTTP POST\nReal-time data"
+ngrok --> backend : "Proxy Tunnel\nPublic access"
+backend --> db : "CRUD Operations\nSequelize ORM"
+backend --> csv : "Export Data\nCSV format"
+csv --> backend : "Import\nTraining data"
+
+note right of sensors
+  <b>IoT Hardware:</b>
+  - ESP32 microcontroller
+  - Multi-gas sensor array
+  - BME680 environmental
+  - Real-time streaming
+  - Low power consumption
+  - WiFi connectivity
+end note
+
+note bottom of db
+  <b>Data Management:</b>
+  - User authentication
+  - Sensor readings history
+  - Prediction analytics
+  - Training data storage
+  - Query optimization
+end note
+
+note left of ngrok
+  <b>Remote Access:</b>
+  - Public URL exposure
+  - Webhook support
+  - Remote IoT access
+  - SSL/TLS encryption
+  - Development tool
+end note
+
+note right of csv
+  <b>Data Export:</b>
+  - CSV format
+  - Training datasets
+  - Analytics export
+  - Backup capability
+end note
+
+@enduml

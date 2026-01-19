@@ -1,0 +1,66 @@
+@startuml TeleScent Slide 1 - User Interface
+!theme cyborg
+skinparam backgroundColor #1E1E1E
+title <color:#FFFFFF>User Interface & Frontend Layer</color>
+
+skinparam component {
+    BackgroundColor<<frontend>> #1E3A5F
+    BorderColor<<frontend>> #64B5F6
+    FontColor<<frontend>> #FFFFFF
+}
+
+skinparam actor {
+    BackgroundColor #424242
+    BorderColor #FFFFFF
+    FontColor #FFFFFF
+}
+
+skinparam note {
+    BackgroundColor #2C2C2C
+    BorderColor #757575
+    FontColor #FFFFFF
+}
+
+skinparam arrow {
+    Color #9E9E9E
+    FontColor #FFFFFF
+}
+
+skinparam package {
+    BackgroundColor #252525
+    BorderColor #616161
+    FontColor #FFFFFF
+}
+
+actor User
+
+package "Frontend Layer" {
+    component "React Application\n(Port 3000)" as react <<frontend>> {
+        [Dashboard\nReal-time monitoring]
+        [ML Console\nModel insights]
+        [Sensor Data View\nHistorical data]
+        [Authentication\nLogin/Register]
+    }
+}
+
+User --> react : "Web Browser\n(Chrome, Firefox, Safari)"
+
+note right of react
+  <b>Technologies:</b>
+  - React.js framework
+  - Material-UI components
+  - Real-time updates
+  - Data visualization
+  - Responsive design
+  - JWT token management
+end note
+
+note left of User
+  <b>User Actions:</b>
+  - View live sensor data
+  - Monitor predictions
+  - Analyze historical trends
+  - Manage account
+end note
+
+@enduml

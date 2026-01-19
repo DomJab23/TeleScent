@@ -1,0 +1,28 @@
+@startuml TeleScent ML Workflow Compact
+!theme cyborg
+skinparam backgroundColor #1E1E1E
+title <color:#FFFFFF>TeleScent Machine Learning Workflow</color>
+
+skinparam defaultFontColor #FFFFFF
+skinparam rectangle {
+    roundCorner 10
+    FontColor #FFFFFF
+}
+
+' Top to bottom flow
+together {
+    rectangle "**Phase 1**\nData Collection\n━━━━━━━━━\nESP32 Sensors\n5 Scent Classes" as phase1 #4A148C
+    rectangle "**Phase 2**\nModel Training\n━━━━━━━━━\nRandom Forest\n95% Accuracy" as phase2 #1B5E20
+}
+
+together {
+    rectangle "**Phase 3**\nModel Storage\n━━━━━━━━━\n6-Sensor Full\n2-Sensor Simple" as phase3 #4A3200
+    rectangle "**Phase 4**\nInference\n━━━━━━━━━\nReal-time\n<50ms" as phase4 #1E3A5F
+}
+
+phase1 -down-> phase2
+phase2 -down-> phase3
+phase3 -down-> phase4
+phase1 -right-> phase4 : "Live\nData"
+
+@enduml

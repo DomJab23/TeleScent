@@ -1,0 +1,63 @@
+@startuml TeleScent Architecture Simplified
+!theme cyborg
+skinparam backgroundColor #1E1E1E
+skinparam componentStyle rectangle
+
+title <color:#FFFFFF>TeleScent - Simplified Architecture (Single Slide)</color>
+
+' Dark theme color scheme
+skinparam component {
+    BackgroundColor<<frontend>> #1E3A5F
+    BorderColor<<frontend>> #64B5F6
+    FontColor<<frontend>> #FFFFFF
+    BackgroundColor<<backend>> #4A3200
+    BorderColor<<backend>> #FFB74D
+    FontColor<<backend>> #FFFFFF
+    BackgroundColor<<ml>> #1B5E20
+    BorderColor<<ml>> #81C784
+    FontColor<<ml>> #FFFFFF
+    BackgroundColor<<data>> #4A148C
+    BorderColor<<data>> #BA68C8
+    FontColor<<data>> #FFFFFF
+    BackgroundColor<<external>> #B71C1C
+    BorderColor<<external>> #EF5350
+    FontColor<<external>> #FFFFFF
+}
+
+skinparam actor {
+    BackgroundColor #424242
+    BorderColor #FFFFFF
+    FontColor #FFFFFF
+}
+
+skinparam arrow {
+    Color #9E9E9E
+    FontColor #FFFFFF
+}
+
+skinparam database {
+    BackgroundColor #4A148C
+    BorderColor #BA68C8
+    FontColor #FFFFFF
+}
+
+skinparam rectangle {
+    FontColor #FFFFFF
+}
+
+actor User
+
+rectangle "Frontend\nReact App" as frontend <<frontend>>
+rectangle "Backend\nExpress.js API" as backend <<backend>>
+rectangle "ML Service\nPython" as ml <<ml>>
+database "SQLite\nDatabase" as db <<data>>
+rectangle "IoT Sensors\nESP32" as sensors <<external>>
+
+User --> frontend : "Web UI"
+frontend <--> backend : "REST API"
+backend <--> ml : "Predictions"
+backend <--> db : "Data Storage"
+sensors --> backend : "Sensor Data"
+ml --> db : "Training Data"
+
+@enduml

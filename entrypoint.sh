@@ -31,40 +31,67 @@ echo "✅ Server is running on port 5001"
 echo "📝 Default credentials: admin / admin"
 echo ""
 
-# Start ngrok with optional authtoken
+# Start tunnel service (localhost.run - supports both HTTP and HTTPS)
 if [ -n "$NGROK_AUTHTOKEN" ]; then
-    echo "🔗 Starting ngrok tunnel with authtoken..."
-    ngrok config add-authtoken "$NGROK_AUTHTOKEN" 2>/dev/null || true
+    echo "🔗 Starting localhost.run tunnel (HTTP/HTTPS support)..."
     
-    # Kill any existing ngrok processes
-    pkill ngrok 2>/dev/null || true
+    # Kill any existing tunnel processes
+    pkill -f "localhost.run" 2>/dev/null || true
     sleep 1
     
-    # Start ngrok tunnel
-    ngrok http 5001 &
-    NGROK_PID=$!
-    sleep 3
+    # Start localhost.run tunnel in background
+    echo "🔗 Launching localhost.run tunnel on port 5001..."
+    nohup ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -R 80:localhost:5001 nokey@localhost.run > /tmp/tunnel.log 2>&1 &
+    TUNNEL_PID=$!
     
-    # Try to get the public URL
-    NGROK_URL=$(curl -s http://localhost:4040/api/tunnels 2>/dev/null | grep -o '"public_url":"https://[^"]*' | head -1 | cut -d'"' -f4)
+    # Wait for tunnel to start and get URL
+    echo "⏳ Waiting for localhost.run tunnel to establish..."
+    for i in {1..15}; do
+        sleep 2
+        # Extract URL from tunnel log
+        TUNNEL_URL=$(grep -o 'https://[^ ]*\.lhr\.life' /tmp/tunnel.log 2>/dev/null | head -1)
+        
+        if [ -n "$TUNNEL_URL" ]; then
+            HTTP_URL=$(echo "$TUNNEL_URL" | sed 's/https:/http:/')
+            echo "✅ localhost.run tunnel established!"
+            echo "🌐 HTTP URL:  $HTTP_URL"
+            echo "🌐 HTTPS URL: $TUNNEL_URL"
+            echo "✨ Both URLs work - use HTTP for eNose, HTTPS for web browsers"
+            echo ""
+            break
+        fi
+        
+        if [ $i -eq 15 ]; then
+            echo "⚠️  Tunnel started but URL not available yet"
+            echo "📋 Check logs: docker exec telescent-backend cat /tmp/tunnel.log"
+            echo ""
+        fi
+    done
     
-    if [ -n "$NGROK_URL" ]; then
-        echo "✅ ngrok tunnel started successfully!"
-        echo "🌐 Public URL: $NGROK_URL"
-        echo "🌐 ngrok Web UI: http://localhost:4040"
-    else
-        echo "✅ ngrok tunnel started (waiting for URL...)"
-        echo "🌐 Check ngrok Web UI at http://localhost:4040 for your public URL"
-    fi
+    # Monitor tunnel process and restart if it dies
+    (
+        while true; do
+            sleep 30
+            if ! kill -0 $TUNNEL_PID 2>/dev/null; then
+                echo "⚠️  Tunnel process died, restarting..."
+                nohup ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -R 80:localhost:5001 nokey@localhost.run > /tmp/tunnel.log 2>&1 &
+                TUNNEL_PID=$!
+                sleep 5
+                TUNNEL_URL=$(grep -o 'https://[^ ]*\.lhr\.life' /tmp/tunnel.log 2>/dev/null | head -1)
+                if [ -n "$TUNNEL_URL" ]; then
+                    HTTP_URL=$(echo "$TUNNEL_URL" | sed 's/https:/http:/')
+                    echo "✅ Tunnel restarted: $HTTP_URL (HTTP) / $TUNNEL_URL (HTTPS)"
+                fi
+            fi
+        done
+    ) &
 else
-    echo "⚠️  No ngrok authtoken provided."
-    echo "    To use ngrok tunneling:"
-    echo "    1. Sign up at https://ngrok.com"
-    echo "    2. Get your authtoken from https://dashboard.ngrok.com/auth/your-authtoken"
-    echo "    3. Set NGROK_AUTHTOKEN in docker-compose.yml"
+    echo "⚠️  No NGROK_AUTHTOKEN provided (using it as tunnel enable flag)."
+    echo "    To enable HTTP/HTTPS tunneling with localhost.run:"
+    echo "    Set NGROK_AUTHTOKEN environment variable to any value (e.g., 'enable')"
     echo ""
     echo "    For now, the server is accessible at: http://localhost:5001"
 fi
 
-# Keep the container running
+# Keep the container running by waiting for the Node.js server
 wait $SERVER_PID

@@ -1,0 +1,42 @@
+@startuml TeleScent ML Pipeline Simple
+!theme cyborg
+skinparam backgroundColor #1E1E1E
+skinparam defaultFontColor #FFFFFF
+title <color:#FFFFFF>TeleScent ML Pipeline</color>
+
+skinparam rectangle {
+    roundCorner 8
+    FontColor #FFFFFF
+    FontSize 12
+}
+
+skinparam arrow {
+    Color #9E9E9E
+    FontColor #FFFFFF
+    FontSize 11
+}
+
+' Simple linear flow
+rectangle "**IoT Sensors**\nESP32\n6 Gas Sensors" as sensors #4A148C
+rectangle "**Data Collection**\nLabeled Samples\n5 Scent Classes" as data #4A148C
+rectangle "**Model Training**\nRandom Forest\n95%+ Accuracy" as training #1B5E20
+rectangle "**Saved Models**\n6-Sensor Full\n2-Sensor Simple" as models #4A3200
+rectangle "**Real-Time Inference**\nserve.py\n<50ms Response" as inference #1E3A5F
+
+' Linear flow
+sensors -right-> data : "Stream\nData"
+data -right-> training : "Train"
+training -right-> models : "Save"
+models -right-> inference : "Load"
+sensors -down-> inference : "Predict"
+
+note bottom
+  <b>Key Features:</b>
+  • 6-sensor array (VOC, NOx, NO2, Ethanol, etc.)
+  • Random Forest classifier (200 trees)
+  • 95-98% accuracy | <50ms inference
+  • Dual models: Full (6-sensor) & Simple (2-sensor)
+  • Auto-detects available sensors
+end note
+
+@enduml
