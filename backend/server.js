@@ -10,27 +10,11 @@ const { startPredictionService } = require('./services/predictionService');
 const app = express();
 const PORT = process.env.PORT || 5001;
 
-// CORS configuration - allow specific origins with credentials
+// CORS configuration - allow all origins for development/testing
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps, Postman, curl)
-    if (!origin) return callback(null, true);
-    
-    const allowedOrigins = [
-      'http://localhost:3000',
-      'http://localhost:5001',
-    ];
-    
-    // Allow any ngrok URL
-    if (origin.includes('ngrok-free.app') || origin.includes('ngrok-free.dev') || origin.includes('ngrok.io')) {
-      return callback(null, true);
-    }
-    
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
+    // Allow all origins (including localhost.run, ngrok, etc.)
+    return callback(null, true);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],

@@ -28,9 +28,22 @@ export default function MLConsole() {
   const [modelInfo] = useState({
     name: 'TeleScent Random Forest Classifier',
     version: '1.0',
-    scents: ['apple', 'banana', 'coconut', 'coffee', 'grape', 'icecream', 'lavender', 'lemon', 'mango', 'melon', 'orange', 'pineapple'],
+    scents: ['orange', 'no scent', 'vanilla', 'ginger', 'cinnamon'],
     features: ['gas_bme', 'srawVoc', 'srawNox', 'NO2', 'ethanol', 'VOC_multichannel', 'COandH2'],
     trained: true
+  });
+
+  // Dataset Information
+  const [datasetInfo] = useState({
+    totalSamples: 1200,
+    phases: ['Training', 'Validation', 'Testing'],
+    scents: [
+      { label: 'Orange', samples: 240 },
+      { label: 'No Scent', samples: 240 },
+      { label: 'Vanilla', samples: 240 },
+      { label: 'Ginger', samples: 240 },
+      { label: 'Cinnamon', samples: 240 }
+    ]
   });
 
   // Real-time prediction data from backend
@@ -39,26 +52,6 @@ export default function MLConsole() {
   const [error, setError] = useState(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const intervalRef = useRef(null);
-
-  // Dataset info from master_dataset1.csv
-  const [datasetInfo] = useState({
-    totalSamples: 9070,
-    scents: [
-      { label: 'apple', samples: 756 },
-      { label: 'banana', samples: 756 },
-      { label: 'coconut', samples: 756 },
-      { label: 'coffee', samples: 756 },
-      { label: 'grape', samples: 756 },
-      { label: 'icecream', samples: 756 },
-      { label: 'lavender', samples: 756 },
-      { label: 'lemon', samples: 756 },
-      { label: 'mango', samples: 756 },
-      { label: 'melon', samples: 756 },
-      { label: 'orange', samples: 756 },
-      { label: 'pineapple', samples: 756 }
-    ],
-    phases: ['baseline', 'exposure', 'recovery', 'outside_protocol']
-  });
 
   // Fetch all devices and their predictions
   const fetchDevicesWithPredictions = async () => {
