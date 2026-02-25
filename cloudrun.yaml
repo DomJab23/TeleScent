@@ -1,0 +1,36 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: telescent
+spec:
+  template:
+    metadata:
+      annotations:
+        # Scale to 0 when no traffic (saves cost)
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "2"
+        # 512MB memory - enough for Node + Python ML model
+        run.googleapis.com/memory: "512Mi"
+        run.googleapis.com/cpu: "1"
+    spec:
+      # Allow container up to 60s to start (Python model loading takes time)
+      timeoutSeconds: 60
+      containerConcurrency: 80
+      containers:
+        - image: IMAGE_PLACEHOLDER
+          ports:
+            - containerPort: 5001
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: "5001"
+            - name: DOCKER_ENV
+              value: "true"
+          resources:
+            limits:
+              memory: "512Mi"
+              cpu: "1"
+  traffic:
+    - percent: 100
+      latestRevision: true

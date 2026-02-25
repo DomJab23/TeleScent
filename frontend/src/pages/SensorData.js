@@ -108,9 +108,17 @@ export default function SensorData() {
             
             return updated;
           });
-          
-          // Fetch latest predictions after new sensor data
-          fetchPredictions();
+
+          // Update prediction directly from SSE payload if available
+          if (payload.prediction && dataEntry.deviceId) {
+            setPredictions((prev) => ({
+              ...prev,
+              [dataEntry.deviceId]: payload.prediction,
+            }));
+          } else {
+            // Fallback: fetch from API
+            fetchPredictions();
+          }
           
         } catch (err) {
           console.error('Failed to parse SSE payload', err);
@@ -268,11 +276,11 @@ export default function SensorData() {
                       <Typography variant="subtitle2" sx={{ color: 'white', mb: 1 }}>
                         Top Predictions:
                       </Typography>
-                      {mlPrediction.top_predictions && Object.entries(mlPrediction.top_predictions).map(([scent, prob]) => (
-                        <Box key={scent} sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                          <Typography sx={{ color: 'rgba(255,255,255,0.9)' }}>{scent}</Typography>
+                      {mlPrediction.top_predictions && mlPrediction.top_predictions.map((item) => (
+                        <Box key={item.scent} sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                          <Typography sx={{ color: 'rgba(255,255,255,0.9)' }}>{item.scent}</Typography>
                           <Typography sx={{ color: 'white', fontWeight: 'bold' }}>
-                            {(prob * 100).toFixed(1)}%
+                            {(item.confidence * 100).toFixed(1)}%
                           </Typography>
                         </Box>
                       ))}

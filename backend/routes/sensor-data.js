@@ -250,9 +250,19 @@ router.post('/', async (req, res) => {
       // Continue even if save fails
     }
 
-    // Broadcast new reading to all connected SSE clients
+    // Broadcast new reading + prediction to all connected SSE clients
     try {
-      const payload = JSON.stringify({ type: 'sensor', data: dataEntry });
+      const payload = JSON.stringify({
+        type: 'sensor',
+        data: dataEntry,
+        prediction: {
+          scent: finalScent,
+          confidence: finalConfidence,
+          top_predictions: finalTopPredictions,
+          emitter_control: emitterControl,
+          timestamp: new Date().toISOString(),
+        },
+      });
       sseClients.forEach(clientRes => {
         try {
           clientRes.write(`event: sensor\n`);

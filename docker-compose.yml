@@ -10,20 +10,11 @@ services:
       NODE_ENV: production
       PORT: 5001
       DOCKER_ENV: "true"
-      # NGROK_AUTHTOKEN used as tunnel enable flag (any value enables localhost.run tunnel)
-      NGROK_AUTHTOKEN: "enable"
     volumes:
       - ./backend/database.sqlite:/app/database.sqlite
       - ./collected_data:/collected_data
     networks:
       - telescent-network
-    # Give the container more time to start
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5001/api"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 20s
 
 networks:
   telescent-network:

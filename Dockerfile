@@ -7,9 +7,7 @@ WORKDIR /app
 
 # Install dependencies for native modules and other tools
 RUN apt-get update && apt-get install -y \
-    curl \
     bash \
-    openssh-client \
     python3 \
     python3-venv \
     python3-pip \
@@ -17,11 +15,6 @@ RUN apt-get update && apt-get install -y \
     g++ \
     gcc \
     && rm -rf /var/lib/apt/lists/*
-
-# Note: ngrok is kept for backward compatibility, but we now use localhost.run tunnel via SSH
-RUN curl -LO https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz && \
-    tar xzf ngrok-v3-stable-linux-amd64.tgz -C /usr/local/bin && \
-    rm ngrok-v3-stable-linux-amd64.tgz
 
 # Copy frontend package files first
 COPY frontend/package*.json /tmp/frontend/
@@ -42,8 +35,8 @@ WORKDIR /app
 # Copy backend package files
 COPY backend/package*.json ./
 
-# Install backend dependencies with proper build tools
-RUN npm install --save-dev node-gyp && npm install
+# Install backend dependencies
+RUN npm install
 
 # Copy backend source code
 COPY backend/ .
@@ -52,11 +45,12 @@ COPY backend/ .
 RUN mkdir -p ../frontend/build
 RUN cp -r /tmp/frontend/build/* ../frontend/build/
 
-# Copy ML directory and install Python dependencies
-COPY ml/ ../ml/
+# Copy only ML runtime files (model + inference script, not training data/notebooks)
+COPY ml/serve.py ../ml/serve.py
+COPY ml/model/ ../ml/model/
 RUN python3 -m venv /app/venv && \
     /app/venv/bin/pip install --upgrade pip && \
-    /app/venv/bin/pip install scikit-learn==1.7.2 joblib pandas numpy
+    /app/venv/bin/pip install "scikit-learn==1.7.2" "joblib>=1.3.0" "pandas>=2.0.0" "numpy>=1.24.0"
 
 # Expose port
 EXPOSE 5001

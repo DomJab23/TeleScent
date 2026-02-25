@@ -14,6 +14,11 @@ const getApiUrl = () => {
       window.location.hostname.includes('serveo')) {
     return window.location.origin;
   }
+
+  // If running on Cloud Run or any non-localhost host, use the same origin
+  if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    return window.location.origin;
+  }
   
   // Default to localhost for local development
   return 'http://localhost:5001';

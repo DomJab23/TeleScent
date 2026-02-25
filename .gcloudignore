@@ -1,0 +1,25 @@
+# Use .dockerignore rules
+#!include:.dockerignore
+
+# Additional GCP exclusions
+*.puml
+*.md
+DOCKER_DEPLOYMENT.md
+DOCKER_SETUP.md
+GCP_DEPLOYMENT_CLEANUP.md
+PRESENTATION_SCRIPT.md
+REFACTORING_REPORT.md
+ML_PIPELINE_SCRIPT.md
+
+# Local collected data
+collected_data/
+backend/database.sqlite
+
+# ML training artifacts
+ml/*.ipynb
+ml/*.csv
+ml/*.xlsx
+ml/train_simple_model.py
+ml/collect_labeled_data.py
+ml/export_db_to_csv.py
+ml/__pycache__/

@@ -1,5 +1,6 @@
 {
   "model_type": "RandomForestClassifier",
+  "sklearn_version": "1.7.2",
   "n_estimators": 100,
   "max_depth": 20,
   "features": [
@@ -8,7 +9,20 @@
     "NO2",
     "ethanol",
     "VOC_multichannel",
-    "COandH2"
+    "COandH2",
+    "voc_ratio",
+    "ethanol_voc_ratio",
+    "voc_balance",
+    "nox_intensity",
+    "nox_balance",
+    "voc_no2_interaction",
+    "ethanol_no2_ratio",
+    "co_voc_ratio",
+    "total_voc_intensity",
+    "chemical_diversity",
+    "gas_dominance",
+    "srawVoc_normalized",
+    "srawNox_normalized"
   ],
   "target_column": "scent_name",
   "classes": [

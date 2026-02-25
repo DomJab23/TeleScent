@@ -1,12 +1,32 @@
 node_modules
+*/node_modules
 npm-debug.log
 .git
 .gitignore
 .env
 .env.local
 *.md
+*.puml
 .DS_Store
 .vscode
 .idea
 __pycache__
 *.pyc
+
+# ML training artifacts (only model/ and serve.py are copied explicitly in Dockerfile)
+ml/collect_labeled_data.py
+ml/export_db_to_csv.py
+ml/train_simple_model.py
+ml/*.ipynb
+ml/*.csv
+ml/*.xlsx
+ml/README.md
+
+# Local data & DB
+collected_data/
+backend/database.sqlite
+
+# Test files
+backend/*.test.js
+backend/jest.config.js
+frontend/src/tests/
