@@ -3,107 +3,52 @@ const router = express.Router();
 const { predictionStore } = require('../services/dataStore');
 
 /**
- * Build a prediction object from a DB record (latest reading per device)
- */
-function predictionFromDbRecord(record) {
-  return {
-    scent: record.predictedScent || 'unknown',
-    confidence: record.confidence || 0,
-    top_predictions: record.predictedScent
-      ? [{ scent: record.predictedScent, confidence: record.confidence || 0 }]
-      : [],
-    emitter_control: { '0': 0, '1': 0, '2': 0, '3': 0, '4': 0, '5': 0, '6': 0, '7': 0 },
-    timestamp: record.createdAt,
-    source: 'database',
-    sensorData: {
-      deviceId: record.deviceId,
-      temperature: record.sensor0,
-      humidity: record.sensor1,
-      pressure: record.sensor2,
-      gas: record.sensor3,
-      voc: record.sensor4,
-      no2: record.sensor5,
-    },
-  };
-}
-
-/**
  * GET /api/predictions
- * Get all predictions – memory first, DB fallback for cold starts
+ * Get all predictions
  */
-router.get('/', async (req, res) => {
+router.get('/', (req, res) => {
   try {
-    const { SensorData } = require('../models');
-    const { Sequelize } = require('sequelize');
-
-    // Collect device IDs that have no in-memory prediction
-    const memoryDevices = Object.keys(predictionStore).filter(
-      k => k !== '_consecutiveState' && predictionStore[k]?.scent
-    );
-
-    // Always fetch latest DB records (one per device) to fill gaps
-    const latestRecords = await SensorData.findAll({
-      attributes: [
-        'deviceId',
-        [Sequelize.fn('MAX', Sequelize.col('id')), 'maxId'],
-      ],
-      group: ['deviceId'],
-      raw: true,
-    });
-
-    const merged = { ...predictionStore };
-
-    await Promise.all(
-      latestRecords.map(async ({ deviceId, maxId }) => {
-        if (!merged[deviceId] || !merged[deviceId].scent) {
-          const record = await SensorData.findByPk(maxId);
-          if (record && record.predictedScent) {
-            merged[deviceId] = predictionFromDbRecord(record);
-          }
-        }
-      })
-    );
-
     res.json({
       message: 'All predictions retrieved successfully',
-      predictions: merged,
-      totalDevices: Object.keys(merged).filter(k => k !== '_consecutiveState').length,
+      predictions: predictionStore,
+      totalDevices: Object.keys(predictionStore).length
     });
   } catch (error) {
     console.error('Error retrieving predictions:', error);
-    res.status(500).json({ message: 'Internal server error', error: error.message });
+    res.status(500).json({
+      message: 'Internal server error',
+      error: error.message
+    });
   }
 });
 
 /**
  * GET /api/predictions/:deviceId
- * Get prediction for a specific device – memory first, DB fallback
+ * Get prediction for a specific device
  */
-router.get('/:deviceId', async (req, res) => {
+router.get('/:deviceId', (req, res) => {
   try {
     const { deviceId } = req.params;
-    let prediction = predictionStore[deviceId];
-
-    if (!prediction || !prediction.scent) {
-      // Fallback: load latest DB record for this device
-      const { SensorData } = require('../models');
-      const record = await SensorData.findOne({
-        where: { deviceId },
-        order: [['id', 'DESC']],
-      });
-      if (record && record.predictedScent) {
-        prediction = predictionFromDbRecord(record);
-      }
-    }
-
+    const prediction = predictionStore[deviceId];
+    
     if (!prediction) {
-      return res.status(404).json({ message: 'No prediction found for this device', deviceId });
+      return res.status(404).json({
+        message: 'No prediction found for this device',
+        deviceId
+      });
     }
-
-    res.json({ message: 'Prediction retrieved successfully', deviceId, prediction });
+    
+    res.json({
+      message: 'Prediction retrieved successfully',
+      deviceId,
+      prediction
+    });
   } catch (error) {
     console.error('Error retrieving prediction:', error);
-    res.status(500).json({ message: 'Internal server error', error: error.message });
+    res.status(500).json({
+      message: 'Internal server error',
+      error: error.message
+    });
   }
 });
 

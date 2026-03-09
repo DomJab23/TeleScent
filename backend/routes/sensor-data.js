@@ -223,6 +223,14 @@ router.post('/', async (req, res) => {
         sensor3: sensorValues[3] || null,
         sensor4: sensorValues[4] || null,
         sensor5: sensorValues[5] || null,
+        // Named chemical sensors required for ML retraining
+        ethanol: dataEntry.ethanol ?? null,
+        coH2: dataEntry.co_h2 ?? null,
+        vocRaw: dataEntry.voc_raw ?? null,
+        noxRaw: dataEntry.nox_raw ?? null,
+        // Collection session metadata
+        sessionId: req.body.session_id || null,
+        phase: req.body.phase || null,
         predictedScent: finalScent,
         confidence: finalConfidence,
       });
@@ -234,6 +242,8 @@ router.post('/', async (req, res) => {
         id: dbRecord.id,
         deviceId: dbRecord.deviceId,
         scent: dbRecord.scent || '',
+        sessionId: dbRecord.sessionId || '',
+        phase: dbRecord.phase || '',
         timestamp: dbRecord.timestamp,
         sensor0: dbRecord.sensor0,
         sensor1: dbRecord.sensor1,
@@ -241,6 +251,10 @@ router.post('/', async (req, res) => {
         sensor3: dbRecord.sensor3,
         sensor4: dbRecord.sensor4,
         sensor5: dbRecord.sensor5,
+        ethanol: dbRecord.ethanol ?? '',
+        coH2: dbRecord.coH2 ?? '',
+        vocRaw: dbRecord.vocRaw ?? '',
+        noxRaw: dbRecord.noxRaw ?? '',
         predictedScent: dbRecord.predictedScent || '',
         confidence: dbRecord.confidence || '',
         createdAt: dbRecord.createdAt,
@@ -250,19 +264,9 @@ router.post('/', async (req, res) => {
       // Continue even if save fails
     }
 
-    // Broadcast new reading + prediction to all connected SSE clients
+    // Broadcast new reading to all connected SSE clients
     try {
-      const payload = JSON.stringify({
-        type: 'sensor',
-        data: dataEntry,
-        prediction: {
-          scent: finalScent,
-          confidence: finalConfidence,
-          top_predictions: finalTopPredictions,
-          emitter_control: emitterControl,
-          timestamp: new Date().toISOString(),
-        },
-      });
+      const payload = JSON.stringify({ type: 'sensor', data: dataEntry });
       sseClients.forEach(clientRes => {
         try {
           clientRes.write(`event: sensor\n`);

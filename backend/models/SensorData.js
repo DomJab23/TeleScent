@@ -42,6 +42,33 @@ const SensorData = sequelize.define('SensorData', {
   sensor3: DataTypes.FLOAT,
   sensor4: DataTypes.FLOAT,
   sensor5: DataTypes.FLOAT,
+  // Named chemical sensor values (required for ML retraining)
+  ethanol: {
+    type: DataTypes.FLOAT,
+    allowNull: true,
+  },
+  coH2: {
+    type: DataTypes.FLOAT,
+    allowNull: true,
+  },
+  vocRaw: {
+    type: DataTypes.FLOAT,
+    allowNull: true,
+  },
+  noxRaw: {
+    type: DataTypes.FLOAT,
+    allowNull: true,
+  },
+  // Collection session metadata
+  sessionId: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    index: true,
+  },
+  phase: {
+    type: DataTypes.STRING, // stabilisation | exposure | recovery
+    allowNull: true,
+  },
   // ML prediction results
   predictedScent: {
     type: DataTypes.STRING,
@@ -59,6 +86,8 @@ const SensorData = sequelize.define('SensorData', {
     { fields: ['scent'] },
     { fields: ['timestamp'] },
     { fields: ['createdAt'] },
+    { fields: ['sessionId'] },
+    { fields: ['phase'] },
   ],
 });
 

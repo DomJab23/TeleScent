@@ -6,7 +6,7 @@ const CSV_DIR = path.join(__dirname, '../../collected_data');
 const CSV_FILE = path.join(CSV_DIR, 'sensor_data.csv');
 
 // CSV header
-const CSV_HEADER = 'ID,Device ID,Scent,Timestamp,Sensor 0,Sensor 1,Sensor 2,Sensor 3,Sensor 4,Sensor 5,Predicted Scent,Confidence,Created At\n';
+const CSV_HEADER = 'ID,Device ID,Scent,Session ID,Phase,Timestamp,Sensor 0,Sensor 1,Sensor 2,Sensor 3,Sensor 4,Sensor 5,Ethanol,CoH2,VocRaw,NoxRaw,Predicted Scent,Confidence,Created At\n';
 
 // Ensure CSV directory exists
 if (!fs.existsSync(CSV_DIR)) {
@@ -43,6 +43,8 @@ async function appendToCsv(sensorData) {
       escapeCsvField(sensorData.id),
       escapeCsvField(sensorData.deviceId),
       escapeCsvField(sensorData.scent),
+      escapeCsvField(sensorData.sessionId),
+      escapeCsvField(sensorData.phase),
       escapeCsvField(sensorData.timestamp),
       escapeCsvField(sensorData.sensor0),
       escapeCsvField(sensorData.sensor1),
@@ -50,6 +52,10 @@ async function appendToCsv(sensorData) {
       escapeCsvField(sensorData.sensor3),
       escapeCsvField(sensorData.sensor4),
       escapeCsvField(sensorData.sensor5),
+      escapeCsvField(sensorData.ethanol),
+      escapeCsvField(sensorData.coH2),
+      escapeCsvField(sensorData.vocRaw),
+      escapeCsvField(sensorData.noxRaw),
       escapeCsvField(sensorData.predictedScent),
       escapeCsvField(sensorData.confidence),
       escapeCsvField(sensorData.createdAt),

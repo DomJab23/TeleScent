@@ -5,8 +5,8 @@ const SensorData = require('./SensorData');
 // Initialize all models
 const initializeDatabase = async () => {
   try {
-    // Sync all models with database (don't alter existing tables)
-    await sequelize.sync(); 
+    // alter: true adds new columns to existing tables without dropping data
+    await sequelize.sync({ alter: true });
     console.log('Database synchronized successfully.');
   } catch (error) {
     console.error('Error synchronizing database:', error);
