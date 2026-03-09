@@ -125,11 +125,27 @@ router.post('/', async (req, res) => {
       }
     }
 
-    // Always run prediction for every POST (no caching)
+    // --- ML Prediction ---
+    // Skip prediction when ground-truth label is provided (data collection mode).
+    // The old model doesn't know new scent classes, so running it would produce
+    // misleading predictedScent values (e.g. "gingerbread" for sweet_orange).
+    const isCollectionMode = !!req.body.scent;
     const { getPrediction, scentToEmitterControl } = require('../services/predictionService');
-    console.log(`🔮 Running prediction for ${deviceId} (every POST)...`);
-    const prediction = await getPrediction(dataEntry);
-    console.log(`🤖 ML Prediction: ${prediction.predicted_scent} (${(prediction.confidence * 100).toFixed(1)}%)`);
+
+    let prediction, finalScent, finalConfidence, finalTopPredictions, forcedNoScent = false;
+
+    if (isCollectionMode) {
+      // Collection mode: use ground-truth label as prediction (no ML needed)
+      finalScent = req.body.scent;
+      finalConfidence = 1.0;
+      finalTopPredictions = [{ scent: req.body.scent, confidence: 1.0 }];
+      prediction = { predicted_scent: finalScent, confidence: 1.0, top_predictions: finalTopPredictions };
+      console.log(`📝 Collection mode — using ground-truth label: ${finalScent} (skipping ML prediction)`);
+    } else {
+      // Live mode: run ML prediction as normal
+      console.log(`🔮 Running prediction for ${deviceId} (every POST)...`);
+      prediction = await getPrediction(dataEntry);
+      console.log(`🤖 ML Prediction: ${prediction.predicted_scent} (${(prediction.confidence * 100).toFixed(1)}%)`);
 
     // --- Consecutive prediction logic (backend, per device) ---
     if (!predictionStore._consecutiveState) predictionStore._consecutiveState = {};
@@ -137,10 +153,9 @@ router.post('/', async (req, res) => {
       predictionStore._consecutiveState[deviceId] = { lastScent: null, count: 0 };
     }
     const state = predictionStore._consecutiveState[deviceId];
-    let finalScent = prediction.predicted_scent;
-    let finalConfidence = prediction.confidence;
-    let finalTopPredictions = prediction.top_predictions;
-    let forcedNoScent = false;
+    finalScent = prediction.predicted_scent;
+    finalConfidence = prediction.confidence;
+    finalTopPredictions = prediction.top_predictions;
 
     // If VOC or NO2 dropped by 7, force no_scent
     if (forceNoScentByDrop) {
@@ -168,6 +183,7 @@ router.post('/', async (req, res) => {
         console.log(`🚦 Forcing 'no_scent' after 3 consecutive predictions. Counter reset.`);
       }
     }
+    } // end else (live mode)
 
     const emitterControl = scentToEmitterControl(finalScent, finalConfidence);
 

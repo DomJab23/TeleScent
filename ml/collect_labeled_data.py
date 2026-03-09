@@ -18,7 +18,7 @@ from datetime import datetime
 # ── Configuration ──────────────────────────────────────────────────────────────
 LOCAL_BACKEND  = "http://localhost:5001/api/sensor-data"   # labeled data saved here (local SQLite)
 CLOUD_BACKEND  = "https://telescent-157735763503.europe-west1.run.app/api/sensor-data"  # Arduino sends data here
-DEVICE_ID      = "eNose001"
+DEVICE_ID      = "EnoseDevice001"
 
 VALID_LABELS = ["no_scent", "sweet_orange"]
 VALID_PHASES = ["stabilisation", "exposure", "recovery"]
@@ -27,6 +27,7 @@ BASELINE_TOLERANCE   = 0.15   # ±15% gas_resistance deviation triggers warning
 READINGS_STAB        = 10     # readings in stabilisation block
 READINGS_EXPOSURE    = 30     # readings in exposure block  (~90 s at 3 s/reading)
 READINGS_RECOVERY    = 10     # readings in recovery block
+READINGS_BASELINE    = 10     # clean-air baseline block after scented recovery
 READING_INTERVAL_S   = 3      # seconds between readings
 FLUSH_DURATION_S     = 180    # 3-minute decontamination flush
 
@@ -48,12 +49,40 @@ def get_gas(reading: dict) -> float | None:
         return None
 
 
+# Track last seen Cloud Run timestamp to avoid saving duplicate readings
+_last_cloud_timestamp: str | None = None
+
+
 def fetch_latest_reading() -> dict | None:
+    """Fetch latest reading from Cloud Run. Returns (reading, cloud_timestamp) or None."""
+    global _last_cloud_timestamp
     try:
         url = CLOUD_BACKEND
         r = requests.get(url, timeout=10)
         if r.status_code == 200:
             data = r.json()
+
+            # Cloud Run returns: { devices: { <deviceId>: { latestReading: {...} } } }
+            if isinstance(data, dict) and "devices" in data:
+                devices = data["devices"]
+                if not devices:
+                    print("  ⚠️  No devices reporting to Cloud Run")
+                    return None
+                # Pick the first device (or match DEVICE_ID)
+                for dev_id, dev_data in devices.items():
+                    reading = dev_data.get("latestReading")
+                    cloud_ts = dev_data.get("lastUpdate", "")
+                    if reading:
+                        # Dedup: skip if we already saved this exact reading
+                        if cloud_ts and cloud_ts == _last_cloud_timestamp:
+                            return None  # stale — Arduino hasn't pushed a new one
+                        _last_cloud_timestamp = cloud_ts
+                        print(f"  📡 New reading from {dev_id} @ {cloud_ts}")
+                        return reading
+                print("  ⚠️  Devices found but no latestReading")
+                return None
+
+            # Fallback: list or flat dict
             if isinstance(data, list) and data:
                 return data[-1]
             if isinstance(data, dict):
@@ -105,10 +134,17 @@ def collect_block(label: str, phase: str, session_id: str, n: int,
     print(f"\n  ▶  {n} readings  |  phase={phase}  |  label={label}")
     print(f"  {'─' * 54}")
 
-    for i in range(1, n + 1):
+    saved = 0
+    retries = 0
+    max_retries = n * 15  # give up after ~n*15 poll cycles
+
+    while saved < n and retries < max_retries:
         reading = fetch_latest_reading()
         if reading is None:
-            print(f"  [{i:02d}/{n}] ⚠️  No data — retrying in {READING_INTERVAL_S}s")
+            # Stale or no data — wait for Arduino to push a new reading
+            retries += 1
+            if retries % 5 == 0:
+                print(f"  ... waiting for new reading from Arduino ({saved}/{n} saved)")
             time.sleep(READING_INTERVAL_S)
             continue
 
@@ -121,7 +157,8 @@ def collect_block(label: str, phase: str, session_id: str, n: int,
             if dev > BASELINE_TOLERANCE:
                 flag = f"  ⚠️  gas dev {dev*100:.0f}%"
 
-        print(f"  [{i:02d}/{n}]  gas={gas_str}  voc={str(reading.get('voc')):>6}"
+        saved += 1
+        print(f"  [{saved:02d}/{n}]  gas={gas_str}  voc={str(reading.get('voc')):>6}"
               f"  no2={str(reading.get('no2')):>6}"
               f"  eth={str(reading.get('ethanol')):>6}"
               f"  voc_raw={str(reading.get('voc_raw')):>7}{flag}")
@@ -130,8 +167,7 @@ def collect_block(label: str, phase: str, session_id: str, n: int,
             print(f"         ❌ save failed")
 
         readings.append(reading)
-        if i < n:
-            time.sleep(READING_INTERVAL_S)
+        retries = 0  # reset retry counter after successful read
 
     return readings
 
@@ -153,11 +189,18 @@ def recovery_ok(readings: list[dict], baseline: float) -> bool:
 
 
 # ── UI helpers ─────────────────────────────────────────────────────────────────
-def select_label() -> str | None:
+def select_label(class_counts: dict | None = None) -> str | None:
     print(f"\n{'─' * 54}")
     print("  Select label for next exposure block:")
     for i, lbl in enumerate(VALID_LABELS, 1):
-        print(f"    {i}. {lbl}")
+        count_str = ""
+        if class_counts:
+            count_str = f"  ({class_counts.get(lbl, 0)} saved)"
+        print(f"    {i}. {lbl}{count_str}")
+    if class_counts:
+        total = sum(class_counts.values())
+        print(f"    ──────────────────────")
+        print(f"    Total: {total}")
     print(f"{'─' * 54}")
     while True:
         choice = input("  Enter number (or 'q' to end session): ").strip()
@@ -217,8 +260,11 @@ def main():
     block_num  = 0
     total_sent = len(stab)
 
+    # Track per-class exposure counts (only exposure-phase readings count for training)
+    class_counts = {"no_scent": 0, "sweet_orange": 0}
+
     while True:
-        exposure_label = select_label()
+        exposure_label = select_label(class_counts)
         if exposure_label is None:
             break
 
@@ -236,6 +282,7 @@ def main():
         exp = collect_block(exposure_label, "exposure", session_id, READINGS_EXPOSURE,
                             baseline_gas=baseline)
         total_sent += len(exp)
+        class_counts[exposure_label] = class_counts.get(exposure_label, 0) + len(exp)
 
         # Remove pad and flush
         print(f"\n  🌬️  Remove pad from intake NOW.")
@@ -267,7 +314,17 @@ def main():
                         break
                     print(f"  ❌ Still not restored.")
 
+        # ── Auto-collect no_scent baseline after scented exposure ──────────
+        if exposure_label != "no_scent":
+            print(f"\n  📏 Collecting {READINGS_BASELINE} clean-air baseline readings "
+                  f"(no_scent / exposure) for balanced training data...")
+            bl = collect_block("no_scent", "exposure", session_id, READINGS_BASELINE,
+                               baseline_gas=baseline)
+            total_sent += len(bl)
+            class_counts["no_scent"] = class_counts.get("no_scent", 0) + len(bl)
+
         print(f"\n  📊 Block {block_num} done  |  Session total: {total_sent} readings")
+        print(f"     Class balance: {class_counts}")
 
     # ── Session summary ──────────────────────────────────────────────────────
     print(f"\n{'=' * 60}")
@@ -285,197 +342,6 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         print("\n\n⚠️  Interrupted")
-    except Exception as e:
-        print(f"\n❌ Error: {e}")
-        import traceback
-        traceback.print_exc()
-
-# Backend API configuration
-BACKEND_URL = "http://localhost:5001/api/sensor-data"
-DEVICE_ID = "eNose001"
-
-# Valid scent labels
-VALID_SCENTS = ["cinnamon", "ginger", "orange", "vanilla", "no_scent"]
-
-def prompt_for_scent():
-    """Prompt user to select a scent label"""
-    print("\n" + "="*60)
-    print("Available scent labels:")
-    for i, scent in enumerate(VALID_SCENTS, 1):
-        print(f"  {i}. {scent}")
-    print("="*60)
-    
-    while True:
-        choice = input("\nEnter scent number (or 'q' to quit): ").strip()
-        
-        if choice.lower() == 'q':
-            return None
-        
-        try:
-            idx = int(choice) - 1
-            if 0 <= idx < len(VALID_SCENTS):
-                return VALID_SCENTS[idx]
-            else:
-                print(f"❌ Invalid choice. Please enter 1-{len(VALID_SCENTS)}")
-        except ValueError:
-            print("❌ Invalid input. Please enter a number or 'q'")
-
-def get_latest_sensor_readings():
-    """Fetch the latest sensor readings from backend API"""
-    print("\n📊 Fetching latest sensor readings from backend...")
-    
-    try:
-        # Fetch latest sensor data from backend
-        response = requests.get(f"{BACKEND_URL.replace('/sensor-data', '')}/sensor-data", timeout=5)
-        
-        if response.status_code == 200:
-            data = response.json()
-            
-            # Get the most recent reading
-            if isinstance(data, list) and len(data) > 0:
-                latest = data[-1]  # Get last item
-            elif isinstance(data, dict):
-                latest = data
-            else:
-                print("❌ No sensor data available")
-                return None
-            
-            # Extract sensor values
-            sensor_data = {
-                "temperature": latest.get("temperature"),
-                "humidity": latest.get("humidity"),
-                "pressure": latest.get("pressure"),
-                "gas": latest.get("gas"),
-                "voc": latest.get("voc"),
-                "no2": latest.get("no2"),
-                "voc_raw": latest.get("voc_raw"),
-                "nox_raw": latest.get("nox_raw"),
-                "ethanol": latest.get("ethanol"),
-                "co_h2": latest.get("co_h2")
-            }
-            
-            print("✅ Latest sensor readings:")
-            print(f"   Temperature: {sensor_data['temperature']}°C")
-            print(f"   Humidity: {sensor_data['humidity']}%")
-            print(f"   Pressure: {sensor_data['pressure']} kPa")
-            print(f"   Gas: {sensor_data['gas']} Ω")
-            print(f"   VOC: {sensor_data['voc']}")
-            print(f"   NO2: {sensor_data['no2']}")
-            
-            return sensor_data
-            
-        else:
-            print(f"❌ Failed to fetch sensor data: {response.status_code}")
-            return None
-            
-    except requests.exceptions.RequestException as e:
-        print(f"❌ Network error while fetching sensor data: {e}")
-        return None
-
-def send_labeled_data(scent_label, sensor_data):
-    """Send labeled sensor data to backend API"""
-    payload = {
-        "device_id": DEVICE_ID,
-        "timestamp": int(time.time() * 1000),  # milliseconds
-        "scent": scent_label,  # Add scent label
-        "temperature": sensor_data.get("temperature"),
-        "humidity": sensor_data.get("humidity"),
-        "pressure": sensor_data.get("pressure"),
-        "gas": sensor_data.get("gas"),
-        "voc_raw": sensor_data.get("voc_raw"),
-        "nox_raw": sensor_data.get("nox_raw"),
-        "no2": sensor_data.get("no2"),
-        "ethanol": sensor_data.get("ethanol"),
-        "voc": sensor_data.get("voc"),
-        "co_h2": sensor_data.get("co_h2"),
-        "sensorValues": [
-            sensor_data.get("temperature"),
-            sensor_data.get("humidity"),
-            sensor_data.get("pressure"),
-            sensor_data.get("gas"),
-            sensor_data.get("voc"),
-            sensor_data.get("no2")
-        ]
-    }
-    
-    try:
-        response = requests.post(BACKEND_URL, json=payload, timeout=10)
-        
-        if response.status_code == 200:
-            result = response.json()
-            print(f"✅ Data sent successfully!")
-            print(f"   Scent label: {scent_label}")
-            print(f"   Predicted: {result.get('prediction', {}).get('scent', 'N/A')}")
-            print(f"   Confidence: {result.get('prediction', {}).get('confidence', 0)*100:.1f}%")
-            return True
-        else:
-            print(f"❌ Failed to send data: {response.status_code}")
-            print(f"   Response: {response.text}")
-            return False
-            
-    except requests.exceptions.RequestException as e:
-        print(f"❌ Network error: {e}")
-        return False
-
-def main():
-    print("\n" + "="*60)
-    print("🌸  TeleScent Labeled Data Collection  🌸")
-    print("="*60)
-    print(f"\nBackend: {BACKEND_URL}")
-    print(f"Device ID: {DEVICE_ID}")
-    
-    collection_count = 0
-    
-    while True:
-        # Prompt for scent label
-        scent = prompt_for_scent()
-        
-        if scent is None:
-            print("\n👋 Exiting data collection...")
-            break
-        
-        print(f"\n✅ Selected scent: {scent}")
-        
-        # Get latest sensor readings from backend
-        sensor_data = get_latest_sensor_readings()
-        
-        if sensor_data is None:
-            print("⚠️  No sensor data available. Make sure the eNose device is sending data.")
-            retry = input("Try again? (y/n): ").strip().lower()
-            if retry != 'y':
-                continue
-            else:
-                continue
-        
-        # Confirm before sending
-        print(f"\n📤 Ready to send labeled data:")
-        print(f"   Scent: {scent}")
-        print(f"   Sensors: {json.dumps(sensor_data, indent=2)}")
-        
-        confirm = input("\nSend this data? (y/n): ").strip().lower()
-        
-        if confirm == 'y':
-            if send_labeled_data(scent, sensor_data):
-                collection_count += 1
-                print(f"\n📊 Total samples collected: {collection_count}")
-            
-            # Ask if user wants to collect more
-            more = input("\nCollect another sample? (y/n): ").strip().lower()
-            if more != 'y':
-                break
-        else:
-            print("❌ Data not sent")
-    
-    print(f"\n✨ Collection session complete!")
-    print(f"   Total samples: {collection_count}")
-    print("\n💾 To export all data to CSV, run:")
-    print("   python3 export_db_to_csv.py\n")
-
-if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        print("\n\n⚠️  Interrupted by user")
     except Exception as e:
         print(f"\n❌ Error: {e}")
         import traceback
