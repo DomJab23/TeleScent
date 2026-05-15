@@ -20,7 +20,7 @@ LOCAL_BACKEND  = "http://localhost:5001/api/sensor-data"   # labeled data saved 
 CLOUD_BACKEND  = "https://telescent-157735763503.europe-west1.run.app/api/sensor-data"  # Arduino sends data here
 DEVICE_ID      = "EnoseDevice001"
 
-VALID_LABELS = ["no_scent", "sweet_orange"]
+VALID_LABELS = ["no_scent", "sweet_orange", "peppermint"]
 VALID_PHASES = ["stabilisation", "exposure", "recovery"]
 
 BASELINE_TOLERANCE   = 0.15   # ±15% gas_resistance deviation triggers warning
@@ -261,7 +261,7 @@ def main():
     total_sent = len(stab)
 
     # Track per-class exposure counts (only exposure-phase readings count for training)
-    class_counts = {"no_scent": 0, "sweet_orange": 0}
+    class_counts = {lbl: 0 for lbl in VALID_LABELS}
 
     while True:
         exposure_label = select_label(class_counts)

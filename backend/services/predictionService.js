@@ -3,18 +3,20 @@ const path = require('path');
 const { sensorDataStore, predictionStore } = require('./dataStore');
 
 // Scent to Emitter Mapping
-// Updated for 5-class model: cinnamon, gingerbread, norange (Natural Orange), vanilla, no_scent
+// Active 3-class model: no_scent, sweet_orange, peppermint
 const SCENT_EMITTER_MAP = {
-  'cinnamon': { channel: 0, intensity: 200 },
+  'no_scent':     { channel: -1, intensity: 0 },   // baseline - no emission
+  'sweet_orange': { channel: 2,  intensity: 200 },
+  'peppermint':   { channel: 4,  intensity: 200 },
+  // Legacy mappings retained so older data/labels still emit something sensible
+  'cinnamon':    { channel: 0, intensity: 200 },
   'gingerbread': { channel: 1, intensity: 200 },
-  'norange': { channel: 2, intensity: 200 },  // Natural Orange scent
-  'vanilla': { channel: 3, intensity: 200 },
-  'no_scent': { channel: -1, intensity: 0 },  // Baseline - no emitter activation (channel -1 = no output)
-  // Legacy mappings (if needed for older data)
-  'banana': { channel: 5, intensity: 200 },
-  'orange': { channel: 2, intensity: 200 },   // Same as norange
-  'coconut': { channel: 6, intensity: 200 },
-  'pineapple': { channel: 7, intensity: 200 }
+  'norange':     { channel: 2, intensity: 200 },
+  'orange':      { channel: 2, intensity: 200 },
+  'vanilla':     { channel: 3, intensity: 200 },
+  'banana':      { channel: 5, intensity: 200 },
+  'coconut':     { channel: 6, intensity: 200 },
+  'pineapple':   { channel: 7, intensity: 200 }
 };
 
 /**

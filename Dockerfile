@@ -45,8 +45,11 @@ COPY backend/ .
 RUN mkdir -p ../frontend/build
 RUN cp -r /tmp/frontend/build/* ../frontend/build/
 
-# Copy only ML runtime files (model + inference script, not training data/notebooks)
+# Copy only ML runtime files (model + inference script, not training data/notebooks).
+# features.py is required: pipeline.joblib pickles a ScentFeatureBuilder step
+# from `ml.features`, so unpickling fails without it on disk.
 COPY ml/serve.py ../ml/serve.py
+COPY ml/features.py ../ml/features.py
 COPY ml/model/ ../ml/model/
 RUN python3 -m venv /app/venv && \
     /app/venv/bin/pip install --upgrade pip && \
