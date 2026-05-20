@@ -53,7 +53,8 @@ COPY ml/features.py ../ml/features.py
 COPY ml/model/ ../ml/model/
 RUN python3 -m venv /app/venv && \
     /app/venv/bin/pip install --upgrade pip && \
-    /app/venv/bin/pip install "scikit-learn==1.7.2" "joblib>=1.3.0" "pandas>=2.0.0" "numpy>=1.24.0"
+    /app/venv/bin/pip install "scikit-learn==1.7.2" "joblib>=1.3.0" "pandas>=2.0.0" "numpy>=1.24.0" && \
+    /app/venv/bin/pip install --index-url https://download.pytorch.org/whl/cpu "torch>=2.0"
 
 # Expose port
 EXPOSE 5001

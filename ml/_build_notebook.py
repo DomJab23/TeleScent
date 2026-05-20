@@ -382,9 +382,9 @@ A small but explicit feed-forward network — the second model family alongside
 the tree ensembles. Architecture (Figure for report §6 Methodology):
 
 ```
-Input  (22 engineered features, standardised)
+Input  (N engineered features, standardised — N = ScentFeatureBuilder.OUT_COLS)
   │
-  ├─ Linear(22, 64)  → BatchNorm1d → ReLU → Dropout(0.30)
+  ├─ Linear(N, 64)   → BatchNorm1d → ReLU → Dropout(0.30)
   │
   ├─ Linear(64, 32)  → BatchNorm1d → ReLU → Dropout(0.30)
   │
@@ -648,8 +648,13 @@ plt.show()
 md("""
 ## 8. Pick the best model overall and evaluate on the held-out sessions
 
-Selection rule: highest tuned macro-F1, with peppermint recall as tie-breaker.
-The PyTorch network is included alongside the three sklearn pipelines.
+**Production policy.** Deploy whichever model wins on grouped-CV macro-F1.
+If the PyTorch ScentNet wins, `serve.py` loads the network and its
+preprocessor; otherwise it loads the best sklearn pipeline pickle. Ties
+within `EPS = 1e-4` go to sklearn so the simpler serving path is preferred
+when the two are statistically indistinguishable. The best sklearn
+pipeline is always persisted alongside as a fallback so `serve.py` can
+degrade gracefully on hosts without PyTorch installed.
 """)
 code(r"""
 # Build a uniform ranking entry for every candidate.
@@ -664,17 +669,30 @@ for n, s, _, kind in ranking:
 best_name, best_score, best_pipe, best_kind = ranking[0]
 print(f"\n→ Best overall:           {best_name} ({best_score:.4f})")
 
-# The production model served by serve.py is always the best sklearn pipeline,
-# since serve.py loads a joblib pickle (Out-of-Scope from the plan §8: PyTorch
-# is reported but not deployed unless it dominates by > 0.03 macro-F1).
+# Production = overall winner, with ties broken in favour of sklearn.
 sk_ranking = sorted(tuned.items(), key=lambda kv: kv[1].best_score_, reverse=True)
-prod_name, prod_gs = sk_ranking[0]
-prod_pipe = prod_gs.best_estimator_
-print(f"→ Production (sklearn):   {prod_name} ({prod_gs.best_score_:.4f})")
+sk_best_name, sk_best_gs = sk_ranking[0]
+sk_best_pipe  = sk_best_gs.best_estimator_
+sk_best_score = sk_best_gs.best_score_
 
-# For downstream evaluation cells we keep `best_pipe` = overall winner so all
-# the diagnostic figures describe the best model. `prod_pipe` is what gets
-# persisted as pipeline.joblib for serve.py.
+EPS = 1e-4
+if torch_cv_mean > sk_best_score + EPS:
+    prod_kind  = "torch"
+    prod_name  = "pytorch_mlp"
+    prod_score = torch_cv_mean
+    prod_pipe  = torch_predictor
+else:
+    prod_kind  = "sklearn"
+    prod_name  = sk_best_name
+    prod_score = sk_best_score
+    prod_pipe  = sk_best_pipe
+
+print(f"→ Production (deployed):  {prod_name} [{prod_kind}] {prod_score:.4f}")
+print(f"→ Sklearn fallback:       {sk_best_name} {sk_best_score:.4f}")
+
+# Downstream diagnostic cells use `best_pipe` for figures (so plots describe
+# the overall winner). `prod_pipe` is what serve.py loads. `sk_best_pipe` is
+# the always-sklearn fallback used by permutation_importance below.
 """)
 
 code(r"""
@@ -714,7 +732,12 @@ plt.show()
 
 md("### 8.2 Feature importance (permutation, model-agnostic)")
 code(r"""
-perm = permutation_importance(best_pipe, X_test_raw, y_test,
+# Permutation importance needs a fit-able estimator. If the overall winner is
+# the TorchPredictor (no `fit`), fall back to the best sklearn pipeline so the
+# importance bars still describe a deployable model.
+imp_pipe = best_pipe if hasattr(best_pipe, "fit") else sk_best_pipe
+imp_name = best_name if hasattr(best_pipe, "fit") else sk_best_name
+perm = permutation_importance(imp_pipe, X_test_raw, y_test,
                               n_repeats=10, random_state=SEED, n_jobs=1,
                               scoring="f1_macro")
 fb = ScentFeatureBuilder()
@@ -727,7 +750,7 @@ imp_df = (pd.DataFrame({"feature": ds.X.columns,
 fig, ax = plt.subplots(figsize=(6, 4))
 top = imp_df.head(12).iloc[::-1]
 ax.barh(top["feature"], top["importance_mean"], xerr=top["importance_std"])
-ax.set_title(f"Top-12 permutation feature importance — {best_name}")
+ax.set_title(f"Top-12 permutation feature importance — {imp_name}")
 ax.set_xlabel("Δ macro-F1 when feature is shuffled")
 fig.tight_layout()
 fig.savefig(EVAL_DIR / "feature_importance.png", dpi=140)
@@ -767,27 +790,42 @@ print(f"Single-row inference: mean = {latency_ms:.2f} ms over {N} calls")
 latency = {"mean_ms": latency_ms, "n_calls": N}
 """)
 
-# ─── 8. Persist
+# ─── 9. Persist
 md("""
 ## 9. Save the production artefacts
 
-- `ml/model/pipeline.joblib`        — the fitted best pipeline (preprocessing + classifier)
-- `ml/model/label_encoder.joblib`   — string ↔ int mapping for `predicted_scent`
-- `ml/model/metrics.json`           — single source of truth for the report
+- `ml/model/pipeline.joblib`              — best sklearn pipeline (always saved; serves traffic when production is sklearn, otherwise acts as fallback)
+- `ml/model/scentnet.pt`                  — PyTorch ScentNet weights + arch + class names (always saved)
+- `ml/model/scentnet_preprocessor.joblib` — feature → impute → scale pipeline fit on the ScentNet's training rows
+- `ml/model/label_encoder.joblib`         — string ↔ int mapping for `predicted_scent`
+- `ml/model/production.json`              — manifest read by `serve.py` declaring which backend to load
+- `ml/model/metrics.json`                 — single source of truth for the report
 """)
 code(r"""
-# Production: always the best sklearn pipeline (serve.py loads joblib pickles)
-joblib.dump(prod_pipe, MODEL_DIR / "pipeline.joblib")
-joblib.dump(le,        MODEL_DIR / "label_encoder.joblib")
+# Always persist the best sklearn pipeline. When production=sklearn this is
+# what serve.py loads; when production=torch it remains on disk as a fallback
+# for hosts without PyTorch.
+joblib.dump(sk_best_pipe, MODEL_DIR / "pipeline.joblib")
+joblib.dump(le,           MODEL_DIR / "label_encoder.joblib")
 
-# Persist the PyTorch artefacts side-by-side so they can be loaded and
-# reported on. They are NOT used by serve.py.
+# Always persist the PyTorch artefacts (used as production when prod_kind=='torch',
+# otherwise still saved for the report).
 joblib.dump(pre_final, MODEL_DIR / "scentnet_preprocessor.joblib")
 torch.save({
     "state_dict": final_model.state_dict(),
     "arch": {"in_dim": N_FEATURES_ENG, "n_classes": N_CLASSES, "p": 0.30},
     "class_names": class_names,
 }, MODEL_DIR / "scentnet.pt")
+
+# Production manifest — read by serve.py on startup.
+(MODEL_DIR / "production.json").write_text(json.dumps({
+    "kind":              prod_kind,            # "sklearn" | "torch"
+    "model_name":        prod_name,
+    "cv_macro_f1":       float(prod_score),
+    "sklearn_fallback":  sk_best_name,
+    "sklearn_fallback_cv_macro_f1": float(sk_best_score),
+    "classes":           class_names,
+}, indent=2))
 
 metrics_blob = {
     "sklearn_version":   sklearn.__version__,
@@ -796,9 +834,12 @@ metrics_blob = {
     "classes":           class_names,
     "best_model_overall": best_name,
     "production_model":   prod_name,
-    "production_params":  prod_gs.best_params_,
-    "cv_macro_f1_overall": float(best_score),
-    "cv_macro_f1_production": float(prod_gs.best_score_),
+    "production_kind":    prod_kind,
+    "sklearn_fallback":   sk_best_name,
+    "sklearn_fallback_params":  sk_best_gs.best_params_,
+    "cv_macro_f1_overall":      float(best_score),
+    "cv_macro_f1_production":   float(prod_score),
+    "cv_macro_f1_sklearn_fallback": float(sk_best_score),
     "cv_table":          cv_table.round(4).to_dict(),
     "pytorch": {
         "cv_macro_f1_mean":  torch_cv_mean,
@@ -807,7 +848,7 @@ metrics_blob = {
         "holdout_report":    classification_report(y_test, torch_y_pred,
                                                     target_names=class_names,
                                                     output_dict=True, zero_division=0),
-        "architecture": "Linear(22,64)-BN-ReLU-Drop0.3 → "
+        "architecture": f"Linear({N_FEATURES_ENG},64)-BN-ReLU-Drop0.3 → "
                          "Linear(64,32)-BN-ReLU-Drop0.3 → Linear(32,3)",
         "optimizer":   "Adam(lr=1e-3, weight_decay=1e-4)",
         "loss":        "CrossEntropyLoss(weight=balanced)",

@@ -1,0 +1,12 @@
+{
+  "kind": "torch",
+  "model_name": "pytorch_mlp",
+  "cv_macro_f1": 0.7982864926822727,
+  "sklearn_fallback": "random_forest",
+  "sklearn_fallback_cv_macro_f1": 0.641016139657444,
+  "classes": [
+    "no_scent",
+    "peppermint",
+    "sweet_orange"
+  ]
+}

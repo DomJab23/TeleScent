@@ -8,6 +8,11 @@ joblib>=1.3.0
 pandas>=2.0.0
 numpy>=1.24.0
 
+# PyTorch (CPU). Required to serve the ScentNet backend; serve.py degrades
+# to the sklearn pipeline if torch is unavailable.
+torch>=2.0
+imbalanced-learn>=0.11
+
 # Visualization (for notebook)
 matplotlib>=3.7.0
 seaborn>=0.12.0

@@ -55,12 +55,25 @@ class ScentFeatureBuilder(BaseEstimator, TransformerMixin):
 
     OUT_COLS = [
         "VOC_multichannel", "NO2", "Ethanol", "CoH2", "VocRaw", "NoxRaw",
-        "Temperature", "Humidity", "GasResist",
+        # Temperature and Humidity intentionally NOT exposed as raw features:
+        # they are near-constant within a session and drift between sessions,
+        # so the model would learn session identity rather than scent.
+        # GasResist stays — it responds to VOC exposure within a session.
+        "GasResist",
         "voc_ratio", "ethanol_voc_ratio", "voc_balance",
         "nox_intensity", "nox_balance",
         "voc_no2_interaction", "ethanol_no2_ratio", "co_voc_ratio",
         "total_voc_intensity", "chemical_diversity", "gas_dominance",
         "vocraw_log", "noxraw_log",
+        # Environmental interactions — MOX gas sensors are strongly affected
+        # by humidity and temperature. Every feature here multiplies an env
+        # channel with a gas channel, so it carries scent signal rather than
+        # being a pure room-conditions fingerprint. `abs_humidity_proxy` is
+        # deliberately excluded for that reason.
+        "gas_temp_ratio", "gas_humidity_ratio",
+        "voc_humidity_corrected", "voc_temp_corrected",
+        "humidity_voc_interaction", "ethanol_humidity_ratio",
+        "gasresist_log",
     ]
 
     def fit(self, X, y=None):  # noqa: D401 - sklearn API
@@ -92,6 +105,18 @@ class ScentFeatureBuilder(BaseEstimator, TransformerMixin):
 
         out["vocraw_log"] = np.log1p(c["VocRaw"].clip(lower=0))
         out["noxraw_log"] = np.log1p(c["NoxRaw"].clip(lower=0))
+
+        # Environmental physics — only features that mix env with a gas
+        # channel survive, so they cannot encode session identity alone.
+        t = c["Temperature"]
+        rh = c["Humidity"]
+        out["gas_temp_ratio"]      = c["GasResist"] / (t + eps)
+        out["gas_humidity_ratio"]  = c["GasResist"] / (rh + eps)
+        out["voc_humidity_corrected"] = c["VOC_multichannel"] / (rh + eps)
+        out["voc_temp_corrected"]     = c["VOC_multichannel"] / (t + eps)
+        out["humidity_voc_interaction"] = rh * c["VOC_multichannel"] / 1000
+        out["ethanol_humidity_ratio"]   = c["Ethanol"] / (rh + eps)
+        out["gasresist_log"] = np.log1p(c["GasResist"].clip(lower=0))
 
         out = out.replace([np.inf, -np.inf], np.nan)
         return out[self.OUT_COLS]
