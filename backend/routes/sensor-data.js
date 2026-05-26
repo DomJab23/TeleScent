@@ -446,23 +446,73 @@ router.get('/', async (req, res) => {
     Object.keys(sensorDataStore).forEach(deviceId => {
       const data = sensorDataStore[deviceId];
       const latestReading = data[data.length - 1] || null;
-      
-      // Attach ML prediction if available
+
       if (latestReading && predictionStore[deviceId]) {
         latestReading.ml_prediction = predictionStore[deviceId];
       }
-      
+
       summary[deviceId] = {
         lastUpdate: latestReading?.receivedAt || null,
         dataCount: data.length,
-        latestReading: latestReading
+        latestReading,
       };
     });
+
+    // Cold-start fallback: fill in any device that has DB history but no in-memory state.
+    try {
+      const { SensorData } = require('../models');
+      const { Sequelize } = require('sequelize');
+      const latestRecords = await SensorData.findAll({
+        attributes: ['deviceId', [Sequelize.fn('MAX', Sequelize.col('id')), 'maxId']],
+        group: ['deviceId'],
+        raw: true,
+      });
+
+      await Promise.all(latestRecords.map(async ({ deviceId, maxId }) => {
+        if (summary[deviceId]) return;
+        const row = await SensorData.findByPk(maxId);
+        if (!row) return;
+
+        const latestReading = {
+          deviceId: row.deviceId,
+          timestamp: row.timestamp ? new Date(row.timestamp).getTime() : null,
+          temperature: row.sensor0,
+          humidity: row.sensor1,
+          pressure: row.sensor2,
+          gas: row.sensor3,
+          voc: row.sensor4,
+          no2: row.sensor5,
+          voc_raw: row.vocRaw,
+          nox_raw: row.noxRaw,
+          ethanol: row.ethanol,
+          co_h2: row.coH2,
+          receivedAt: row.createdAt,
+        };
+        if (row.predictedScent) {
+          latestReading.ml_prediction = {
+            scent: row.predictedScent,
+            confidence: row.confidence || 0,
+            top_predictions: [{ scent: row.predictedScent, confidence: row.confidence || 0 }],
+            emitter_control: { '0': 0, '1': 0, '2': 0, '3': 0, '4': 0, '5': 0, '6': 0, '7': 0 },
+            timestamp: row.createdAt,
+            source: 'database',
+          };
+        }
+        summary[deviceId] = {
+          lastUpdate: row.createdAt,
+          dataCount: 1,
+          latestReading,
+          source: 'database',
+        };
+      }));
+    } catch (dbError) {
+      console.warn('DB fallback for /api/sensor-data failed:', dbError.message);
+    }
 
     res.json({
       message: 'All devices data summary',
       devices: summary,
-      totalDevices: Object.keys(summary).length
+      totalDevices: Object.keys(summary).length,
     });
 
   } catch (error) {

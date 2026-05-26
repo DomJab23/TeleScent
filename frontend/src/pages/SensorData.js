@@ -4,412 +4,298 @@ import {
   Box,
   Typography,
   Paper,
-  Grid,
+  Stack,
   Chip,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   LinearProgress,
-  Card,
-  CardContent,
-  IconButton,
-  Tooltip,
   Alert,
+  Skeleton,
   Divider,
+  useTheme,
 } from '@mui/material';
-import RefreshIcon from '@mui/icons-material/Refresh';
-import SensorsIcon from '@mui/icons-material/Sensors';
-import PsychologyIcon from '@mui/icons-material/Psychology';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import ErrorIcon from '@mui/icons-material/Error';
+import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
 import { apiClient } from '../config/apiConfig';
 
+const POLL_MS = 3000;
+const STALE_MS = 15000;
+
+function timeAgo(ts) {
+  if (!ts) return '—';
+  const ms = Date.now() - new Date(ts).getTime();
+  if (ms < 0 || Number.isNaN(ms)) return '—';
+  if (ms < 1000) return 'just now';
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+function formatScent(s) {
+  if (!s) return '—';
+  return s.replace(/_/g, ' ');
+}
+
+function SensorPill({ label, value, unit }) {
+  const text = value == null || Number.isNaN(value)
+    ? '—'
+    : typeof value === 'number'
+      ? (Math.abs(value) >= 100 ? value.toFixed(0) : value.toFixed(2))
+      : String(value);
+  return (
+    <Box sx={{ minWidth: 90 }}>
+      <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 0.6 }}>
+        {label}
+      </Typography>
+      <Typography variant="h6" sx={{ lineHeight: 1.2 }}>
+        {text}{unit && value != null && <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>{unit}</Typography>}
+      </Typography>
+    </Box>
+  );
+}
+
 export default function SensorData() {
+  const theme = useTheme();
   const [devices, setDevices] = useState({});
   const [predictions, setPredictions] = useState({});
   const [selectedDevice, setSelectedDevice] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [liveUpdates, setLiveUpdates] = useState(true);
-  const eventSourceRef = useRef(null);
+  const [, setTick] = useState(0); // re-render for time-ago
+  const pollRef = useRef(null);
+  const sseRef = useRef(null);
+  const selectedDeviceRef = useRef(null);
+  useEffect(() => { selectedDeviceRef.current = selectedDevice; }, [selectedDevice]);
 
-  // Fetch all devices and their latest data
-  const fetchDevices = async () => {
+  const fetchAll = async () => {
     try {
-      const data = await apiClient.get('/api/sensor-data');
-      setDevices(data.devices || {});
-      
-      // Auto-select first device if none selected
-      if (!selectedDevice && Object.keys(data.devices).length > 0) {
-        setSelectedDevice(Object.keys(data.devices)[0]);
-      }
-      
-      setLoading(false);
+      const [s, p] = await Promise.all([
+        apiClient.get('/api/sensor-data'),
+        apiClient.get('/api/predictions'),
+      ]);
+      setDevices(s.devices || {});
+      setPredictions(p.predictions || {});
       setError(null);
+      setSelectedDevice((cur) => {
+        if (cur && (s.devices || {})[cur]) return cur;
+        const first = Object.keys(s.devices || {})[0] || null;
+        return first;
+      });
     } catch (err) {
-      console.error('Error fetching devices:', err);
-      setError(err.message);
+      setError(err.message || 'Failed to fetch');
+    } finally {
       setLoading(false);
     }
   };
 
-  // Fetch predictions for all devices
-  const fetchPredictions = async () => {
-    try {
-      const data = await apiClient.get('/api/predictions');
-      setPredictions(data.predictions || {});
-    } catch (err) {
-      console.error('Error fetching predictions:', err);
-    }
-  };
-
-  // Initial fetch
   useEffect(() => {
-    fetchDevices();
-    fetchPredictions();
-    
-    // Set up SSE connection for live sensor updates
-    if (liveUpdates) {
-      const evtSource = new EventSource('/api/sensor-data/stream');
-      eventSourceRef.current = evtSource;
-      
-      evtSource.addEventListener('sensor', (e) => {
-        try {
-          const payload = JSON.parse(e.data);
-          const dataEntry = payload.data;
-          
-          // Update devices state with new reading
-          setDevices((prev) => {
-            const deviceId = dataEntry.deviceId;
-            const updated = { ...prev };
-            
-            if (!updated[deviceId]) {
-              updated[deviceId] = {
-                lastUpdate: dataEntry.receivedAt,
-                dataCount: 1,
-                latestReading: dataEntry
-              };
-            } else {
-              updated[deviceId] = {
-                ...updated[deviceId],
-                lastUpdate: dataEntry.receivedAt,
-                dataCount: updated[deviceId].dataCount + 1,
-                latestReading: dataEntry
-              };
-            }
-            
-            // Auto-select first device
-            if (!selectedDevice) {
-              setSelectedDevice(deviceId);
-            }
-            
-            return updated;
-          });
-          
-          // Fetch latest predictions after new sensor data
-          fetchPredictions();
-          
-        } catch (err) {
-          console.error('Failed to parse SSE payload', err);
+    fetchAll();
+    pollRef.current = setInterval(fetchAll, POLL_MS);
+
+    const evt = new EventSource('/api/sensor-data/stream');
+    sseRef.current = evt;
+    evt.addEventListener('sensor', (e) => {
+      try {
+        const payload = JSON.parse(e.data);
+        const dataEntry = payload.data;
+        const incomingPrediction = payload.prediction;
+        const deviceId = dataEntry.deviceId;
+
+        setDevices((prev) => ({
+          ...prev,
+          [deviceId]: {
+            lastUpdate: dataEntry.receivedAt,
+            dataCount: (prev[deviceId]?.dataCount || 0) + 1,
+            latestReading: dataEntry,
+          },
+        }));
+        if (incomingPrediction) {
+          setPredictions((prev) => ({ ...prev, [deviceId]: incomingPrediction }));
         }
-      });
-      
-      evtSource.onerror = (err) => {
-        console.error('EventSource failed:', err);
-      };
-    }
-    
+        if (!selectedDeviceRef.current) setSelectedDevice(deviceId);
+      } catch (_) { /* ignore */ }
+    });
+    evt.onerror = () => { /* browser will retry; polling keeps things fresh */ };
+
+    const ticker = setInterval(() => setTick((t) => t + 1), 1000);
     return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-      }
+      clearInterval(pollRef.current);
+      clearInterval(ticker);
+      evt.close();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [liveUpdates]);
+  }, []);
 
-  // Format timestamp
-  const formatTime = (timestamp) => {
-    return new Date(timestamp).toLocaleTimeString();
-  };
+  const deviceIds = Object.keys(devices);
+  const activeId = selectedDevice && devices[selectedDevice] ? selectedDevice : deviceIds[0];
+  const device = activeId ? devices[activeId] : null;
+  const reading = device?.latestReading || null;
+  const prediction = activeId ? (predictions[activeId] || reading?.ml_prediction) : null;
 
-  // Render sensor value with bar
-  const renderSensorBar = (name, value, unit = '') => {
-    const percentage = Math.min(Math.max(value * 10, 0), 100); // Rough scaling
-    
-    return (
-      <Box sx={{ mb: 2 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-          <Typography variant="body2">{name}</Typography>
-          <Typography variant="body2" fontWeight="bold">
-            {value !== null ? `${value.toFixed(2)} ${unit}` : 'N/A'}
-          </Typography>
-        </Box>
-        <LinearProgress 
-          variant="determinate" 
-          value={percentage} 
-          sx={{ height: 6, borderRadius: 1 }}
-        />
-      </Box>
-    );
-  };
+  const updatedAt = device?.lastUpdate || prediction?.timestamp;
+  const ageMs = updatedAt ? Date.now() - new Date(updatedAt).getTime() : null;
+  const live = ageMs != null && ageMs < STALE_MS;
+  const fromDb = device?.source === 'database' || prediction?.source === 'database';
 
-  const latestData = selectedDevice ? devices[selectedDevice]?.latestReading : null;
-  const mlPrediction = selectedDevice ? predictions[selectedDevice] : null;
+  const confidence = prediction?.confidence != null
+    ? Math.max(0, Math.min(1, prediction.confidence))
+    : 0;
+  const scent = prediction?.scent && prediction.scent !== 'error' ? prediction.scent : null;
+
+  // Normalise top_predictions to array of {scent, confidence}
+  const top = Array.isArray(prediction?.top_predictions)
+    ? prediction.top_predictions
+    : prediction?.top_predictions && typeof prediction.top_predictions === 'object'
+      ? Object.entries(prediction.top_predictions).map(([scent, c]) => ({ scent, confidence: c }))
+      : [];
+  const top3 = top
+    .slice()
+    .sort((a, b) => (b.confidence || 0) - (a.confidence || 0))
+    .slice(0, 3);
+
+  const statusColor = !device ? 'default' : fromDb ? 'info' : live ? 'success' : 'warning';
+  const statusLabel = !device
+    ? 'No device'
+    : fromDb
+      ? 'Last DB record'
+      : live
+        ? 'Live'
+        : `Stale · ${timeAgo(updatedAt)}`;
 
   return (
-    <Container maxWidth="xl" sx={{ mt: 3, mb: 6 }}>
-      {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Box>
-          <Typography variant="h4" gutterBottom>
-            <SensorsIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-            Real-Time Sensor Data & ML Predictions
-          </Typography>
-        </Box>
-        <Box>
-          <Tooltip title={liveUpdates ? 'Live updates ON (SSE)' : 'Live updates OFF'}>
-            <Chip 
-              label={liveUpdates ? 'Live Updates (SSE)' : 'Paused'}
-              color={liveUpdates ? 'success' : 'default'}
-              onClick={() => setLiveUpdates(!liveUpdates)}
-              sx={{ mr: 1 }}
-            />
-          </Tooltip>
-          <Tooltip title="Refresh now">
-            <IconButton onClick={() => { fetchDevices(); fetchPredictions(); }} color="primary">
-              <RefreshIcon />
-            </IconButton>
-          </Tooltip>
-        </Box>
+    <Container maxWidth="md" sx={{ mt: 5, mb: 6 }}>
+      <Box sx={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', mb: 3 }}>
+        <Typography variant="h4" sx={{ fontWeight: 600 }}>Prediction</Typography>
+        <Chip
+          icon={<FiberManualRecordIcon sx={{ fontSize: 14 }} />}
+          label={statusLabel}
+          color={statusColor}
+          size="small"
+          variant={live ? 'filled' : 'outlined'}
+        />
       </Box>
 
-      {/* Error alert */}
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          Failed to fetch device data: {error}
-        </Alert>
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+
+      {deviceIds.length > 1 && (
+        <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
+          {deviceIds.map((id) => (
+            <Chip
+              key={id}
+              label={id}
+              variant={id === activeId ? 'filled' : 'outlined'}
+              color={id === activeId ? 'primary' : 'default'}
+              onClick={() => setSelectedDevice(id)}
+            />
+          ))}
+        </Stack>
       )}
 
-      {/* Loading state */}
-      {loading && (
-        <Box sx={{ textAlign: 'center', py: 4 }}>
-          <Typography>Loading devices...</Typography>
-          <LinearProgress sx={{ mt: 2 }} />
-        </Box>
-      )}
-
-      {/* No devices */}
-      {!loading && Object.keys(devices).length === 0 && (
-        <Alert severity="info">
-          No devices found. Waiting for Arduino to send sensor data...
-        </Alert>
-      )}
-
-      {/* Device selector */}
-      {!loading && Object.keys(devices).length > 0 && (
-        <>
-          <Box sx={{ mb: 3 }}>
-            <Typography variant="h6" gutterBottom>Connected Devices ({Object.keys(devices).length})</Typography>
-            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-              {Object.keys(devices).map((deviceId) => (
-                <Chip
-                  key={deviceId}
-                  label={deviceId}
-                  color={selectedDevice === deviceId ? 'primary' : 'default'}
-                  onClick={() => setSelectedDevice(deviceId)}
-                  icon={<CheckCircleIcon />}
-                />
-              ))}
-            </Box>
+      <Paper
+        elevation={0}
+        sx={{
+          p: { xs: 3, sm: 5 },
+          borderRadius: 3,
+          border: `1px solid ${theme.palette.divider}`,
+          background: theme.palette.mode === 'dark'
+            ? `linear-gradient(180deg, ${theme.palette.background.paper} 0%, rgba(0,0,0,0.2) 100%)`
+            : `linear-gradient(180deg, ${theme.palette.background.paper} 0%, ${theme.palette.grey[50]} 100%)`,
+        }}
+      >
+        {loading ? (
+          <Stack spacing={2}>
+            <Skeleton variant="text" width="60%" height={64} />
+            <Skeleton variant="rectangular" height={12} sx={{ borderRadius: 1 }} />
+            <Skeleton variant="text" width="40%" />
+          </Stack>
+        ) : !device ? (
+          <Box sx={{ py: 4, textAlign: 'center' }}>
+            <Typography variant="h5" color="text.secondary">No device connected</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              Waiting for an Arduino to POST <code>/api/sensor-data</code>.
+            </Typography>
           </Box>
+        ) : (
+          <>
+            <Typography
+              variant="h2"
+              sx={{
+                fontWeight: 700,
+                lineHeight: 1.05,
+                textTransform: 'capitalize',
+                fontSize: { xs: '2.5rem', sm: '3.5rem' },
+                wordBreak: 'break-word',
+                color: scent ? 'text.primary' : 'text.secondary',
+              }}
+            >
+              {scent ? formatScent(scent) : 'no prediction yet'}
+            </Typography>
 
-          {/* Main content */}
-          <Grid container spacing={3}>
-            {/* Left: ML Prediction Card */}
-            <Grid item xs={12} md={4}>
-              <Card sx={{ height: '100%', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                    <PsychologyIcon sx={{ fontSize: 40, color: 'white', mr: 2 }} />
-                    <Typography variant="h5" sx={{ color: 'white', fontWeight: 'bold' }}>
-                      AI Detection
-                    </Typography>
-                  </Box>
+            <Box sx={{ mt: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Box sx={{ flex: 1 }}>
+                <LinearProgress
+                  variant="determinate"
+                  value={confidence * 100}
+                  sx={{ height: 10, borderRadius: 5 }}
+                />
+              </Box>
+              <Typography variant="h5" sx={{ minWidth: 64, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                {(confidence * 100).toFixed(0)}%
+              </Typography>
+            </Box>
 
-                  {mlPrediction && mlPrediction.scent !== 'error' ? (
-                    <>
-                      <Box sx={{ textAlign: 'center', py: 3 }}>
-                        <Typography variant="h2" sx={{ color: 'white', fontWeight: 'bold', mb: 1 }}>
-                          {mlPrediction.scent}
-                        </Typography>
-                        <Typography variant="h6" sx={{ color: 'rgba(255,255,255,0.8)' }}>
-                          Confidence: {(mlPrediction.confidence * 100).toFixed(1)}%
-                        </Typography>
-                        <LinearProgress 
-                          variant="determinate" 
-                          value={mlPrediction.confidence * 100}
-                          sx={{ 
-                            mt: 2, 
-                            height: 10, 
-                            borderRadius: 5,
-                            backgroundColor: 'rgba(255,255,255,0.3)',
-                            '& .MuiLinearProgress-bar': {
-                              backgroundColor: 'white'
-                            }
-                          }}
-                        />
-                      </Box>
+            {top3.length > 1 && (
+              <Stack direction="row" spacing={1} sx={{ mt: 2, flexWrap: 'wrap', gap: 1 }}>
+                {top3.map((t, i) => (
+                  <Chip
+                    key={`${t.scent}-${i}`}
+                    label={`${formatScent(t.scent)} · ${(t.confidence * 100).toFixed(0)}%`}
+                    size="small"
+                    variant={i === 0 ? 'filled' : 'outlined'}
+                    color={i === 0 ? 'primary' : 'default'}
+                    sx={{ textTransform: 'capitalize' }}
+                  />
+                ))}
+              </Stack>
+            )}
 
-                      <Divider sx={{ backgroundColor: 'rgba(255,255,255,0.3)', my: 2 }} />
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
+              {activeId} · updated {timeAgo(updatedAt)}
+              {fromDb && ' · loaded from database'}
+            </Typography>
+          </>
+        )}
+      </Paper>
 
-                      <Typography variant="subtitle2" sx={{ color: 'white', mb: 1 }}>
-                        Top Predictions:
-                      </Typography>
-                      {mlPrediction.top_predictions && Object.entries(mlPrediction.top_predictions).map(([scent, prob]) => (
-                        <Box key={scent} sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                          <Typography sx={{ color: 'rgba(255,255,255,0.9)' }}>{scent}</Typography>
-                          <Typography sx={{ color: 'white', fontWeight: 'bold' }}>
-                            {(prob * 100).toFixed(1)}%
-                          </Typography>
-                        </Box>
-                      ))}
-
-                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)', display: 'block', mt: 2 }}>
-                        Last updated: {formatTime(mlPrediction.timestamp)}
-                      </Typography>
-                    </>
-                  ) : (
-                    <Box sx={{ textAlign: 'center', py: 3 }}>
-                      <ErrorIcon sx={{ fontSize: 60, color: 'rgba(255,255,255,0.5)', mb: 2 }} />
-                      <Typography sx={{ color: 'white' }}>
-                        {mlPrediction?.error || 'Waiting for prediction...'}
-                      </Typography>
-                    </Box>
-                  )}
-                </CardContent>
-              </Card>
-            </Grid>
-
-            {/* Right: Sensor Readings */}
-            <Grid item xs={12} md={8}>
-              <Paper sx={{ p: 3 }}>
-                <Typography variant="h6" gutterBottom>
-                  Sensor Readings - {selectedDevice}
-                </Typography>
-                <Typography variant="caption" color="text.secondary" gutterBottom>
-                  Last update: {latestData ? formatTime(latestData.receivedAt) : 'N/A'}
-                </Typography>
-
-                {latestData ? (
-                  <Box sx={{ mt: 3 }}>
-                    <Grid container spacing={3}>
-                      {/* Environmental Sensors (Not used for ML) */}
-                      <Grid item xs={12} md={6}>
-                        <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                          Environmental (Not used for ML)
-                        </Typography>
-                        {renderSensorBar('Temperature', latestData.temperature, '°C')}
-                        {renderSensorBar('Humidity', latestData.humidity, '%')}
-                        {renderSensorBar('Pressure', latestData.pressure, 'kPa')}
-                      </Grid>
-
-                      {/* Chemical Sensors (Used for ML) */}
-                      <Grid item xs={12} md={6}>
-                        <Typography variant="subtitle2" color="primary" gutterBottom fontWeight="bold">
-                          Chemical Sensors (Used for ML) ✅
-                        </Typography>
-                        {renderSensorBar('Gas Resistance', latestData.gas, 'kΩ')}
-                        {renderSensorBar('Raw VOC', latestData.voc_raw, '')}
-                        {renderSensorBar('Raw NOx', latestData.nox_raw, '')}
-                        {renderSensorBar('NO2', latestData.no2, 'ppb')}
-                        {renderSensorBar('Ethanol', latestData.ethanol, 'ppm')}
-                        {renderSensorBar('VOC Index', latestData.voc, '')}
-                        {renderSensorBar('CO + H2', latestData.co_h2, 'ppm')}
-                      </Grid>
-                    </Grid>
-
-                    {/* Raw data table */}
-                    <Box sx={{ mt: 3 }}>
-                      <Typography variant="subtitle2" gutterBottom>
-                        Raw Sensor Values
-                      </Typography>
-                      <TableContainer>
-                        <Table size="small">
-                          <TableHead>
-                            <TableRow>
-                              <TableCell>Sensor</TableCell>
-                              <TableCell align="right">Value</TableCell>
-                              <TableCell>Used for ML</TableCell>
-                            </TableRow>
-                          </TableHead>
-                          <TableBody>
-                            <TableRow>
-                              <TableCell>Temperature</TableCell>
-                              <TableCell align="right">{latestData.temperature?.toFixed(2) || 'N/A'} °C</TableCell>
-                              <TableCell>❌</TableCell>
-                            </TableRow>
-                            <TableRow>
-                              <TableCell>Humidity</TableCell>
-                              <TableCell align="right">{latestData.humidity?.toFixed(2) || 'N/A'} %</TableCell>
-                              <TableCell>❌</TableCell>
-                            </TableRow>
-                            <TableRow>
-                              <TableCell>Pressure</TableCell>
-                              <TableCell align="right">{latestData.pressure?.toFixed(2) || 'N/A'} kPa</TableCell>
-                              <TableCell>❌</TableCell>
-                            </TableRow>
-                            <TableRow sx={{ backgroundColor: 'rgba(25, 118, 210, 0.08)' }}>
-                              <TableCell>Gas Resistance</TableCell>
-                              <TableCell align="right">{latestData.gas?.toFixed(2) || 'N/A'} kΩ</TableCell>
-                              <TableCell>✅</TableCell>
-                            </TableRow>
-                            <TableRow sx={{ backgroundColor: 'rgba(25, 118, 210, 0.08)' }}>
-                              <TableCell>Raw VOC</TableCell>
-                              <TableCell align="right">{latestData.voc_raw || 'N/A'}</TableCell>
-                              <TableCell>✅</TableCell>
-                            </TableRow>
-                            <TableRow sx={{ backgroundColor: 'rgba(25, 118, 210, 0.08)' }}>
-                              <TableCell>Raw NOx</TableCell>
-                              <TableCell align="right">{latestData.nox_raw || 'N/A'}</TableCell>
-                              <TableCell>✅</TableCell>
-                            </TableRow>
-                            <TableRow sx={{ backgroundColor: 'rgba(25, 118, 210, 0.08)' }}>
-                              <TableCell>NO2</TableCell>
-                              <TableCell align="right">{latestData.no2 || 'N/A'} ppb</TableCell>
-                              <TableCell>✅</TableCell>
-                            </TableRow>
-                            <TableRow sx={{ backgroundColor: 'rgba(25, 118, 210, 0.08)' }}>
-                              <TableCell>Ethanol</TableCell>
-                              <TableCell align="right">{latestData.ethanol || 'N/A'} ppm</TableCell>
-                              <TableCell>✅</TableCell>
-                            </TableRow>
-                            <TableRow sx={{ backgroundColor: 'rgba(25, 118, 210, 0.08)' }}>
-                              <TableCell>VOC Index</TableCell>
-                              <TableCell align="right">{latestData.voc || 'N/A'}</TableCell>
-                              <TableCell>✅</TableCell>
-                            </TableRow>
-                            <TableRow sx={{ backgroundColor: 'rgba(25, 118, 210, 0.08)' }}>
-                              <TableCell>CO + H2</TableCell>
-                              <TableCell align="right">{latestData.co_h2 || 'N/A'} ppm</TableCell>
-                              <TableCell>✅</TableCell>
-                            </TableRow>
-                          </TableBody>
-                        </Table>
-                      </TableContainer>
-                    </Box>
-                  </Box>
-                ) : (
-                  <Typography color="text.secondary" sx={{ mt: 2 }}>
-                    No data available for this device
-                  </Typography>
-                )}
-              </Paper>
-            </Grid>
-          </Grid>
-        </>
+      {reading && (
+        <Paper
+          elevation={0}
+          sx={{
+            mt: 3,
+            p: 3,
+            borderRadius: 3,
+            border: `1px solid ${theme.palette.divider}`,
+          }}
+        >
+          <Typography variant="overline" color="text.secondary">Live sensors</Typography>
+          <Divider sx={{ my: 1 }} />
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(4, 1fr)', md: 'repeat(7, 1fr)' },
+              gap: 2,
+            }}
+          >
+            <SensorPill label="Gas" value={reading.gas} unit="kΩ" />
+            <SensorPill label="VOC" value={reading.voc} />
+            <SensorPill label="NO₂" value={reading.no2} unit="ppb" />
+            <SensorPill label="Ethanol" value={reading.ethanol} unit="ppm" />
+            <SensorPill label="CO+H₂" value={reading.co_h2} unit="ppm" />
+            <SensorPill label="Temp" value={reading.temperature} unit="°C" />
+            <SensorPill label="Humidity" value={reading.humidity} unit="%" />
+          </Box>
+        </Paper>
       )}
     </Container>
   );

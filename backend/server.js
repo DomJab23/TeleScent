@@ -53,6 +53,10 @@ app.use('/api/stats', statsRoutes);
 const predictionsRoutes = require('./routes/predictions');
 app.use('/api/predictions', predictionsRoutes);
 
+// ML model info
+const mlInfoRoutes = require('./routes/ml-info');
+app.use('/api/ml/info', mlInfoRoutes);
+
 // Serve static files from the React app build directory (after API routes)
 const fs = require('fs');
 const buildPath = path.join(__dirname, '../frontend/build');

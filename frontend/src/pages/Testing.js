@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   Container,
   Box,
@@ -14,281 +14,159 @@ import {
   Divider,
   IconButton,
   Tooltip,
+  useTheme,
 } from '@mui/material';
-import PlayArrowIcon from '@mui/icons-material/PlayArrow';
-import StopIcon from '@mui/icons-material/Stop';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { apiClient } from '../config/apiConfig';
 
-// Testing console for backend API and sensor data submission
-export default function TestingConsole() {
-  const [address, setAddress] = useState('http://localhost:5000');
-  const [port, setPort] = useState('5000');
-  const [connected, setConnected] = useState(false);
-  const [backendStatus, setBackendStatus] = useState('unknown');
+const SAMPLE_PAYLOAD = JSON.stringify(
+  {
+    deviceId: 'test-device',
+    temperature: 22.5,
+    humidity: 45,
+    pressure: 101.3,
+    gas: 12.4,
+    voc: 120,
+    voc_raw: 24000,
+    nox_raw: 16000,
+    no2: 80,
+    ethanol: 150,
+    co_h2: 200,
+  },
+  null,
+  2,
+);
 
-  const [sendText, setSendText] = useState('');
-  const [lastMessage, setLastMessage] = useState(null);
+function ts() {
+  return new Date().toLocaleTimeString();
+}
+
+export default function TestingConsole() {
+  const theme = useTheme();
+  const [sendText, setSendText] = useState(SAMPLE_PAYLOAD);
+  const [backendStatus, setBackendStatus] = useState('unknown'); // unknown | ok | error
   const [log, setLog] = useState([]); // {dir: 'in'|'out', text, ts}
 
-  function timestamp() {
-    return new Date().toLocaleString();
-  }
-
   const pushLog = useCallback((entry) => {
-    setLog((l) => {
-      const next = [entry, ...l].slice(0, 500);
-      return next;
-    });
-    if (entry.dir === 'in') setLastMessage(entry);
+    setLog((l) => [{ ...entry, ts: ts() }, ...l].slice(0, 500));
   }, []);
 
-  // Test backend connection
-  const testBackendConnection = async () => {
+  const pingBackend = useCallback(async () => {
+    pushLog({ dir: 'out', text: 'GET /api' });
     try {
       const data = await apiClient.get('/api');
-      setBackendStatus('connected');
-      pushLog({ dir: 'in', text: `✓ Backend connected: ${data.message}`, ts: timestamp() });
-      return true;
+      setBackendStatus('ok');
+      pushLog({ dir: 'in', text: `200 ${JSON.stringify(data)}` });
     } catch (err) {
       setBackendStatus('error');
-      pushLog({ dir: 'in', text: `✗ Backend error: ${err.message}`, ts: timestamp() });
-      return false;
+      pushLog({ dir: 'in', text: `error: ${err.message}` });
+    }
+  }, [pushLog]);
+
+  useEffect(() => {
+    pingBackend();
+  }, [pingBackend]);
+
+  const sendSensorPayload = async () => {
+    let payload;
+    try {
+      payload = JSON.parse(sendText);
+    } catch (err) {
+      pushLog({ dir: 'in', text: `invalid JSON: ${err.message}` });
+      return;
+    }
+    pushLog({ dir: 'out', text: `POST /api/sensor-data ${JSON.stringify(payload)}` });
+    try {
+      const response = await apiClient.post('/api/sensor-data', payload);
+      pushLog({ dir: 'in', text: `200 ${JSON.stringify(response)}` });
+    } catch (err) {
+      pushLog({ dir: 'in', text: `error: ${err.message}` });
     }
   };
 
-  // Send custom JSON data to backend
-  const sendCustomData = async (jsonData) => {
-    pushLog({ dir: 'out', text: `Sending data: ${JSON.stringify(jsonData, null, 2)}`, ts: timestamp() });
-    
-    try {
-      const response = await apiClient.post('/api/sensor-data', jsonData);
-      pushLog({ dir: 'in', text: `✓ Response: ${JSON.stringify(response, null, 2)}`, ts: timestamp() });
-    } catch (err) {
-      pushLog({ dir: 'in', text: `✗ Error: ${err.message}`, ts: timestamp() });
-    }
+  const cardSx = {
+    p: 3,
+    borderRadius: 3,
+    border: `1px solid ${theme.palette.divider}`,
   };
-
-  function handleSend() {
-    if (!sendText) return;
-    
-    try {
-      const jsonData = JSON.parse(sendText);
-      sendCustomData(jsonData);
-      setSendText('');
-    } catch (err) {
-      pushLog({ dir: 'in', text: `✗ Invalid JSON: ${err.message}`, ts: timestamp() });
-    }
-  }
-
-  async function handleConnect() {
-    pushLog({ dir: 'out', text: `Testing connection to backend at ${address}`, ts: timestamp() });
-    const success = await testBackendConnection();
-    if (success) {
-      setConnected(true);
-      pushLog({ dir: 'in', text: '✓ Connected to backend API', ts: timestamp() });
-    }
-  }
-
-  function handleDisconnect() {
-    pushLog({ dir: 'out', text: 'Disconnecting...', ts: timestamp() });
-    setConnected(false);
-    setBackendStatus('unknown');
-    pushLog({ dir: 'in', text: 'Disconnected', ts: timestamp() });
-  }
-
-  function handleConnectToggle() {
-    if (connected) {
-      handleDisconnect();
-    } else {
-      handleConnect();
-    }
-  }
-
-  function handleClearLog() {
-    setLog([]);
-    setLastMessage(null);
-  }
 
   return (
-    <Container component="main" maxWidth="lg" sx={{ mt: 3, mb: 6 }}>
-      <Typography variant="h4" gutterBottom>
-        Backend API Test Console
-      </Typography>
-
-      <Paper sx={{ p: 2, mb: 2 }} elevation={2}>
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">
-          <TextField
-            label="Backend URL"
-            size="small"
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
-            sx={{ minWidth: 200 }}
-          />
-          <TextField
-            label="Port"
-            size="small"
-            value={port}
-            onChange={(e) => setPort(e.target.value)}
-            sx={{ width: 120 }}
-            inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }}
-          />
-
+    <Container maxWidth="lg" sx={{ mt: 5, mb: 6 }}>
+      <Box sx={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', mb: 3 }}>
+        <Typography variant="h4" sx={{ fontWeight: 600 }}>Testing</Typography>
+        <Stack direction="row" spacing={1}>
           <Chip
-            label={connected ? `Connected` : 'Disconnected'}
-            color={connected ? 'success' : 'default'}
-            sx={{ ml: 1 }}
+            size="small"
+            label={backendStatus === 'ok' ? 'Backend OK' : backendStatus === 'error' ? 'Backend error' : 'Pinging…'}
+            color={backendStatus === 'ok' ? 'success' : backendStatus === 'error' ? 'error' : 'default'}
+            variant={backendStatus === 'ok' ? 'filled' : 'outlined'}
           />
-          {backendStatus !== 'unknown' && (
-            <Chip 
-              label={`Backend: ${backendStatus}`} 
-              color={backendStatus === 'connected' ? 'success' : 'error'}
-              size="small"
-            />
-          )}
-
-          <Box sx={{ flex: 1 }} />
-
-          <Tooltip title={connected ? 'Disconnect' : 'Test Connection'}>
-            <Button
-              variant={connected ? 'outlined' : 'contained'}
-              color={connected ? 'warning' : 'primary'}
-              startIcon={connected ? <StopIcon /> : <PlayArrowIcon />}
-              onClick={handleConnectToggle}
-            >
-              {connected ? 'Disconnect' : 'Connect'}
-            </Button>
-          </Tooltip>
+          <Button size="small" onClick={pingBackend}>Re-test</Button>
         </Stack>
-      </Paper>
+      </Box>
 
-      {/* API Test Instructions */}
-      <Paper sx={{ p: 2, mb: 2 }} elevation={1}>
-        <Typography variant="subtitle1" gutterBottom>API Testing</Typography>
-        <Typography variant="body2" color="text.secondary">
-          Use the text field below to send custom JSON data to the backend. Data should match the Arduino sensor format.
-        </Typography>
-        <Stack direction="row" spacing={2} sx={{ mt: 2 }}>
-          <Button variant="outlined" onClick={testBackendConnection}>
-            Test Backend Connection
-          </Button>
-          <Button variant="outlined" onClick={testBackendConnection}>
-            Test API Health
-          </Button>
-        </Stack>
-      </Paper>
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', md: '2fr 1fr' },
+          gap: 3,
+        }}
+      >
+        <Paper elevation={0} sx={cardSx}>
+          <Typography variant="overline" color="text.secondary">Send sensor payload</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            POSTs JSON to <code>/api/sensor-data</code> — same shape the Arduino sends.
+          </Typography>
+          <TextField
+            value={sendText}
+            onChange={(e) => setSendText(e.target.value)}
+            fullWidth
+            multiline
+            minRows={10}
+            maxRows={20}
+            InputProps={{ sx: { fontFamily: 'monospace', fontSize: '0.85rem' } }}
+            sx={{ mt: 2 }}
+          />
+          <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+            <Button variant="contained" onClick={sendSensorPayload}>Send</Button>
+            <Button variant="outlined" onClick={() => setSendText(SAMPLE_PAYLOAD)}>Reset payload</Button>
+          </Stack>
+        </Paper>
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '2fr 1fr' }, gap: 2 }}>
-        {/* Left: Console + send area */}
-        <Box>
-          <Paper sx={{ p: 2, mb: 2 }} elevation={1}>
-            <Typography variant="subtitle1" sx={{ mb: 1 }}>
-              Last Response from Backend
-            </Typography>
-            <Paper variant="outlined" sx={{ p: 2, minHeight: 120, bgcolor: 'background.paper' }}>
-              {lastMessage ? (
-                <Box>
-                  <Typography variant="caption" color="text.secondary">
-                    {lastMessage.ts}
-                  </Typography>
-                  <Typography component="pre" sx={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', mt: 1 }}>
-                    {lastMessage.text}
-                  </Typography>
-                </Box>
-              ) : (
-                <Typography color="text.secondary">No messages received yet.</Typography>
-              )}
-            </Paper>
-
-            <Divider sx={{ my: 1 }} />
-
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="stretch">
-              <TextField
-                label="Message to send"
-                placeholder="Type raw bytes or text to send"
-                value={sendText}
-                onChange={(e) => setSendText(e.target.value)}
-                fullWidth
-                multiline
-                minRows={1}
-                maxRows={4}
-                InputProps={{ sx: { fontFamily: 'monospace' } }}
-              />
-
-              <Stack direction="column" spacing={1}>
-                <Button variant="contained" onClick={handleSend} sx={{ minWidth: 120 }}>
-                  Send
-                </Button>
-                <Tooltip title="Clear log">
-                  <IconButton
-                    aria-label="clear"
-                    onClick={handleClearLog}
-                    title="Clear log"
-                    sx={{
-                      bgcolor: 'error.main',
-                      color: 'common.white',
-                      borderRadius: '10px',
-                      width: 44,
-                      height: 44,
-                      '&:hover': { bgcolor: 'error.dark' },
-                    }}
-                  >
-                    <DeleteIcon />
-                  </IconButton>
-                </Tooltip>
-              </Stack>
-            </Stack>
-          </Paper>
-
-          <Paper sx={{ p: 2 }} elevation={0}>
-            <Typography variant="subtitle2" sx={{ mb: 1 }}>
-              History / Log (newest first)
-            </Typography>
-            <List sx={{ maxHeight: 380, overflow: 'auto', bgcolor: 'background.paper' }}>
-              {log.length === 0 && (
-                <ListItem>
-                  <ListItemText primary="Log is empty" />
-                </ListItem>
-              )}
-              {log.map((item, idx) => (
-                <ListItem key={idx} alignItems="flex-start" divider>
+        <Paper elevation={0} sx={cardSx}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Typography variant="overline" color="text.secondary">Request log</Typography>
+            <Tooltip title="Clear log">
+              <IconButton size="small" onClick={() => setLog([])}>
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Box>
+          <Divider sx={{ my: 1 }} />
+          <List dense sx={{ maxHeight: 480, overflow: 'auto', py: 0 }}>
+            {log.length === 0 ? (
+              <ListItem disableGutters>
+                <ListItemText primary="No requests yet." primaryTypographyProps={{ variant: 'body2', color: 'text.secondary' }} />
+              </ListItem>
+            ) : (
+              log.map((item, idx) => (
+                <ListItem key={idx} disableGutters alignItems="flex-start" divider>
                   <ListItemText
                     primary={
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography sx={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>
-                          {item.dir === 'in' ? '<-- ' : '--> '}
-                          {item.text}
-                        </Typography>
-                      </Box>
+                      <Typography sx={{ fontFamily: 'monospace', fontSize: '0.78rem', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                        <Box component="span" sx={{ color: item.dir === 'out' ? 'primary.main' : 'success.main' }}>
+                          {item.dir === 'out' ? '→ ' : '← '}
+                        </Box>
+                        {item.text}
+                      </Typography>
                     }
-                    secondary={<Typography variant="caption">{item.ts}</Typography>}
+                    secondary={<Typography variant="caption" color="text.secondary">{item.ts}</Typography>}
                   />
                 </ListItem>
-              ))}
-            </List>
-          </Paper>
-        </Box>
-
-        {/* Right: Quick info / optional controls */}
-        <Box>
-          <Paper sx={{ p: 2, mb: 2 }}>
-            <Typography variant="subtitle1">Connection Status</Typography>
-            <Box sx={{ mt: 1 }}>
-              <Typography>
-                <strong>Address:</strong> {address}
-              </Typography>
-              <Typography>
-                <strong>Port:</strong> {port}
-              </Typography>
-              <Typography sx={{ mt: 1 }}>
-                <strong>State:</strong>{' '}
-                <Chip label={connected ? 'Connected' : 'Disconnected'} color={connected ? 'success' : 'default'} size="small" />
-              </Typography>
-            </Box>
-          </Paper>
-
-          {/* Removed Quick actions - receiveFromDevice function not implemented */}
-        </Box>
+              ))
+            )}
+          </List>
+        </Paper>
       </Box>
     </Container>
   );

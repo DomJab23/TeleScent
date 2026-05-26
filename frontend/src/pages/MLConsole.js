@@ -3,8 +3,7 @@ import {
   Container,
   Box,
   Typography,
-  Grid,
-  Button,
+  Paper,
   LinearProgress,
   Table,
   TableBody,
@@ -13,67 +12,68 @@ import {
   TableHead,
   TableRow,
   Alert,
-  Card,
-  CardContent,
   Chip,
+  Skeleton,
+  Divider,
+  useTheme,
 } from '@mui/material';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import PsychologyIcon from '@mui/icons-material/Psychology';
-import DatasetIcon from '@mui/icons-material/Dataset';
-import ModelTrainingIcon from '@mui/icons-material/ModelTraining';
 import { apiClient } from '../config/apiConfig';
 
+const POLL_MS = 3000;
+
+function timeAgo(ts) {
+  if (!ts) return '—';
+  const ms = Date.now() - new Date(ts).getTime();
+  if (ms < 0 || Number.isNaN(ms)) return '—';
+  if (ms < 1000) return 'just now';
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  return h < 24 ? `${h}h ago` : `${Math.floor(h / 24)}d ago`;
+}
+
+function formatScent(s) {
+  return s ? s.replace(/_/g, ' ') : '—';
+}
+
+function pct(v) {
+  if (v == null || Number.isNaN(v)) return '—';
+  return `${(v * 100).toFixed(1)}%`;
+}
+
 export default function MLConsole() {
-  // ML Model Information
-  const [modelInfo] = useState({
-    name: 'TeleScent Random Forest Classifier',
-    version: '1.0',
-    scents: ['orange', 'no scent', 'vanilla', 'ginger', 'cinnamon'],
-    features: ['gas_bme', 'srawVoc', 'srawNox', 'NO2', 'ethanol', 'VOC_multichannel', 'COandH2'],
-    trained: true
-  });
-
-  // Dataset Information
-  const [datasetInfo] = useState({
-    totalSamples: 1200,
-    phases: ['Training', 'Validation', 'Testing'],
-    scents: [
-      { label: 'Orange', samples: 240 },
-      { label: 'No Scent', samples: 240 },
-      { label: 'Vanilla', samples: 240 },
-      { label: 'Ginger', samples: 240 },
-      { label: 'Cinnamon', samples: 240 }
-    ]
-  });
-
-  // Real-time prediction data from backend
+  const theme = useTheme();
+  const [mlInfo, setMlInfo] = useState(null);
+  const [mlInfoError, setMlInfoError] = useState(null);
   const [recentPredictions, setRecentPredictions] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [autoRefresh, setAutoRefresh] = useState(true);
   const intervalRef = useRef(null);
 
-  // Fetch all devices and their predictions
-  const fetchDevicesWithPredictions = async () => {
+  const fetchPredictions = async () => {
     try {
-      setLoading(true);
-      const data = await apiClient.get('/api/sensor-data');
-      
-      // Extract recent predictions from devices
-      const predictions = [];
-      Object.entries(data.devices || {}).forEach(([deviceId, deviceData]) => {
-        if (deviceData.latestReading?.ml_prediction) {
-          predictions.push({
-            deviceId,
-            ...deviceData.latestReading.ml_prediction,
-            timestamp: deviceData.lastUpdate
-          });
-        }
-      });
-      setRecentPredictions(predictions);
+      const [s, p] = await Promise.all([
+        apiClient.get('/api/sensor-data'),
+        apiClient.get('/api/predictions'),
+      ]);
+      const devices = s.devices || {};
+      const preds = p.predictions || {};
+      const merged = Object.keys(devices).map((id) => {
+        const pred = preds[id] || devices[id]?.latestReading?.ml_prediction;
+        if (!pred?.scent) return null;
+        return {
+          deviceId: id,
+          scent: pred.scent,
+          confidence: pred.confidence || 0,
+          top_predictions: pred.top_predictions || null,
+          timestamp: pred.timestamp || devices[id]?.lastUpdate,
+        };
+      }).filter(Boolean);
+      setRecentPredictions(merged);
       setError(null);
     } catch (err) {
-      console.error('Error fetching ML predictions:', err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -81,273 +81,202 @@ export default function MLConsole() {
   };
 
   useEffect(() => {
-    fetchDevicesWithPredictions();
-    
-    if (autoRefresh) {
-      intervalRef.current = setInterval(fetchDevicesWithPredictions, 3000);
-    }
-    
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [autoRefresh]);
+    apiClient.get('/api/ml/info')
+      .then(setMlInfo)
+      .catch((err) => setMlInfoError(err.message || 'Failed to load model info'));
+    fetchPredictions();
+    intervalRef.current = setInterval(fetchPredictions, POLL_MS);
+    return () => clearInterval(intervalRef.current);
+  }, []);
 
-  // Helper functions
-  const formatTime = (timestamp) => {
-    if (!timestamp) return 'N/A';
-    return new Date(timestamp).toLocaleTimeString();
+  const cardSx = {
+    p: 3,
+    borderRadius: 3,
+    border: `1px solid ${theme.palette.divider}`,
   };
 
-  const getConfidenceColor = (confidence) => {
-    if (confidence >= 0.8) return 'success';
-    if (confidence >= 0.6) return 'warning';
-    return 'error';
-  };
+  const model = mlInfo?.model;
+  const metrics = mlInfo?.metrics;
+  const perClass = mlInfo?.perClass || [];
 
   return (
-    <Container maxWidth="xl" sx={{ mt: 3, mb: 6 }}>
-      {/* Header */}
-      <Box sx={{ mb: 4 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-          <PsychologyIcon sx={{ fontSize: 40, mr: 2, color: 'primary.main' }} />
-          <Typography variant="h4">
-            Machine Learning Console
-          </Typography>
-        </Box>
+    <Container maxWidth="lg" sx={{ mt: 5, mb: 6 }}>
+      <Box sx={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', mb: 3 }}>
+        <Typography variant="h4" sx={{ fontWeight: 600 }}>ML Console</Typography>
+        {model?.name && (
+          <Chip size="small" label={`${model.name}${model.kind ? ` · ${model.kind}` : ''}`} variant="outlined" />
+        )}
       </Box>
 
-      {/* Auto-refresh control */}
-      <Box sx={{ mb: 3, display: 'flex', gap: 1, alignItems: 'center' }}>
-        <Chip 
-          label={autoRefresh ? 'Auto-refresh ON (3s)' : 'Auto-refresh OFF'}
-          color={autoRefresh ? 'success' : 'default'}
-          onClick={() => setAutoRefresh(!autoRefresh)}
-        />
-        <Button variant="outlined" size="small" onClick={fetchDevicesWithPredictions}>
-          Refresh Now
-        </Button>
-      </Box>
-
-      {/* Error Alert */}
-      {error && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          Error loading ML data: {error}
+      {mlInfoError && (
+        <Alert severity="warning" sx={{ mb: 3 }}>
+          Could not load model info: {mlInfoError}
         </Alert>
       )}
 
-      {/* Loading */}
-      {loading && <LinearProgress sx={{ mb: 3 }} />}
-
-      <Grid container spacing={3}>
-        {/* Model Information */}
-        <Grid item xs={12} md={6}>
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <ModelTrainingIcon sx={{ mr: 1, color: 'primary.main' }} />
-                <Typography variant="h6">Current ML Model</Typography>
-              </Box>
-              
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="body2" color="text.secondary">Model Name</Typography>
-                <Typography variant="body1" fontWeight="bold">{modelInfo.name}</Typography>
-              </Box>
-              
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="body2" color="text.secondary">Version</Typography>
-                <Typography variant="body1" fontWeight="bold">{modelInfo.version}</Typography>
-              </Box>
-              
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="body2" color="text.secondary">Status</Typography>
-                <Chip 
-                  label={modelInfo.trained ? 'Trained & Active' : 'Not Trained'} 
-                  color={modelInfo.trained ? 'success' : 'warning'}
-                  icon={<CheckCircleIcon />}
-                  size="small"
-                />
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
+          gap: 3,
+          mb: 3,
+        }}
+      >
+        {/* Model card */}
+        <Paper elevation={0} sx={cardSx}>
+          <Typography variant="overline" color="text.secondary">Production model</Typography>
+          {!mlInfo ? (
+            <Skeleton variant="rectangular" height={120} sx={{ mt: 1.5, borderRadius: 1 }} />
+          ) : (
+            <Box sx={{ mt: 1 }}>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                {(model.classes || []).map((c) => (
+                  <Chip key={c} size="small" label={formatScent(c)} variant="outlined" sx={{ textTransform: 'capitalize' }} />
+                ))}
               </Box>
 
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
-                  Detectable Scents ({modelInfo.scents.length})
-                </Typography>
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                  {modelInfo.scents.map((scent) => (
-                    <Chip key={scent} label={scent} size="small" variant="outlined" />
-                  ))}
-                </Box>
-              </Box>
+              <MetricRow label="Holdout accuracy" value={pct(metrics?.holdoutAccuracy)} />
+              <MetricRow label="Holdout macro-F1" value={pct(metrics?.holdoutMacroF1)} />
+              <MetricRow label="CV macro-F1" value={pct(metrics?.cvMacroF1)} />
+              <MetricRow
+                label="Inference latency"
+                value={metrics?.latencyMs != null ? `${metrics.latencyMs.toFixed(1)} ms` : '—'}
+              />
+              <MetricRow
+                label="Test rows (holdout)"
+                value={metrics?.testRows != null ? metrics.testRows.toString() : '—'}
+              />
+              <MetricRow
+                label="Features"
+                value={`${model.featuresIn?.length || 0} raw · ${model.featuresEngineered?.length || 0} engineered`}
+              />
+            </Box>
+          )}
+        </Paper>
 
-              <Box>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
-                  Features Used ({modelInfo.features.length})
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {modelInfo.features.join(', ')}
-                </Typography>
-              </Box>
+        {/* Per-class card */}
+        <Paper elevation={0} sx={cardSx}>
+          <Typography variant="overline" color="text.secondary">Per-class performance (holdout)</Typography>
+          {!mlInfo ? (
+            <Skeleton variant="rectangular" height={160} sx={{ mt: 1.5, borderRadius: 1 }} />
+          ) : perClass.length === 0 ? (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
+              No per-class metrics available.
+            </Typography>
+          ) : (
+            <Table size="small" sx={{ mt: 1 }}>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Scent</TableCell>
+                  <TableCell align="right">Precision</TableCell>
+                  <TableCell align="right">Recall</TableCell>
+                  <TableCell align="right">F1</TableCell>
+                  <TableCell align="right">n</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {perClass.map((row) => (
+                  <TableRow key={row.scent}>
+                    <TableCell sx={{ textTransform: 'capitalize' }}>{formatScent(row.scent)}</TableCell>
+                    <TableCell align="right">{pct(row.precision)}</TableCell>
+                    <TableCell align="right">{pct(row.recall)}</TableCell>
+                    <TableCell align="right">{pct(row.f1)}</TableCell>
+                    <TableCell align="right">{row.support ?? '—'}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </Paper>
+      </Box>
 
-              <Alert severity="info" sx={{ mt: 2 }}>
-                Model files located at: <code>ml/model/</code>
-                <br />• scent_pipeline.joblib
-                <br />• label_encoder.joblib
-                <br />• metrics.json
-              </Alert>
-            </CardContent>
-          </Card>
-        </Grid>
+      {/* Live predictions */}
+      <Paper elevation={0} sx={cardSx}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+          <Typography variant="overline" color="text.secondary">Live predictions per device</Typography>
+          {loading ? <LinearProgress sx={{ width: 80 }} /> : (
+            <Chip size="small" label={`${recentPredictions.length} device${recentPredictions.length === 1 ? '' : 's'}`} variant="outlined" />
+          )}
+        </Box>
+        <Divider sx={{ mb: 1 }} />
 
-        {/* Dataset Information */}
-        <Grid item xs={12} md={6}>
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <DatasetIcon sx={{ mr: 1, color: 'primary.main' }} />
-                <Typography variant="h6">Training Dataset</Typography>
-              </Box>
-              
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="body2" color="text.secondary">Dataset File</Typography>
-                <Typography variant="body1" fontWeight="bold">master_dataset1.csv</Typography>
-              </Box>
-              
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="body2" color="text.secondary">Total Samples</Typography>
-                <Typography variant="body1" fontWeight="bold">{datasetInfo.totalSamples.toLocaleString()}</Typography>
-              </Box>
+        {error && <Alert severity="error" sx={{ my: 2 }}>{error}</Alert>}
 
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
-                  Phases
-                </Typography>
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                  {datasetInfo.phases.map((phase) => (
-                    <Chip key={phase} label={phase} size="small" color="primary" variant="outlined" />
-                  ))}
-                </Box>
-              </Box>
-
-              <Typography variant="body2" color="text.secondary" gutterBottom sx={{ mt: 3 }}>
-                Samples per Scent
-              </Typography>
-              <TableContainer sx={{ maxHeight: 300 }}>
-                <Table size="small" stickyHeader>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Scent</TableCell>
-                      <TableCell align="right">Samples</TableCell>
+        {recentPredictions.length === 0 ? (
+          <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
+            No predictions yet — waiting for sensor data.
+          </Typography>
+        ) : (
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Device</TableCell>
+                  <TableCell>Scent</TableCell>
+                  <TableCell>Confidence</TableCell>
+                  <TableCell>Top 3</TableCell>
+                  <TableCell>Updated</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {recentPredictions.map((pred) => {
+                  const top = pred.top_predictions && typeof pred.top_predictions === 'object'
+                    ? (Array.isArray(pred.top_predictions)
+                        ? pred.top_predictions
+                        : Object.entries(pred.top_predictions).map(([scent, c]) => ({ scent, confidence: c })))
+                      .slice()
+                      .sort((a, b) => (b.confidence || 0) - (a.confidence || 0))
+                      .slice(0, 3)
+                    : [];
+                  return (
+                    <TableRow key={pred.deviceId}>
+                      <TableCell><Chip label={pred.deviceId} size="small" /></TableCell>
+                      <TableCell sx={{ fontWeight: 600, textTransform: 'capitalize' }}>
+                        {formatScent(pred.scent)}
+                      </TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 160 }}>
+                          <LinearProgress
+                            variant="determinate"
+                            value={Math.max(0, Math.min(100, pred.confidence * 100))}
+                            sx={{ flex: 1, height: 6, borderRadius: 3 }}
+                          />
+                          <Typography variant="caption" sx={{ minWidth: 40, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                            {pct(pred.confidence)}
+                          </Typography>
+                        </Box>
+                      </TableCell>
+                      <TableCell>
+                        {top.length === 0 ? '—' : (
+                          <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                            {top.map((t) => (
+                              <Typography key={t.scent} variant="caption" sx={{ textTransform: 'capitalize' }}>
+                                {formatScent(t.scent)} · {pct(t.confidence)}
+                              </Typography>
+                            ))}
+                          </Box>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="caption" color="text.secondary">{timeAgo(pred.timestamp)}</Typography>
+                      </TableCell>
                     </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {datasetInfo.scents.map((item) => (
-                      <TableRow key={item.label}>
-                        <TableCell>{item.label}</TableCell>
-                        <TableCell align="right">{item.samples}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Recent Predictions */}
-        <Grid item xs={12}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Recent ML Predictions
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Live predictions from connected devices
-              </Typography>
-              
-              {recentPredictions.length === 0 ? (
-                <Alert severity="info">
-                  No predictions yet. Waiting for sensor data from Arduino devices...
-                </Alert>
-              ) : (
-                <TableContainer>
-                  <Table>
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Device ID</TableCell>
-                        <TableCell>Predicted Scent</TableCell>
-                        <TableCell>Confidence</TableCell>
-                        <TableCell>Top 3 Predictions</TableCell>
-                        <TableCell>Timestamp</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {recentPredictions.map((pred, idx) => (
-                        <TableRow key={idx}>
-                          <TableCell>
-                            <Chip label={pred.deviceId} size="small" />
-                          </TableCell>
-                          <TableCell>
-                            <Typography variant="body1" fontWeight="bold">
-                              {pred.scent}
-                            </Typography>
-                          </TableCell>
-                          <TableCell>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              <Chip 
-                                label={`${(pred.confidence * 100).toFixed(1)}%`}
-                                color={getConfidenceColor(pred.confidence)}
-                                size="small"
-                              />
-                              <LinearProgress 
-                                variant="determinate" 
-                                value={pred.confidence * 100}
-                                sx={{ width: 100, height: 6, borderRadius: 3 }}
-                              />
-                            </Box>
-                          </TableCell>
-                          <TableCell>
-                            {pred.top_predictions && (
-                              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                                {Object.entries(pred.top_predictions).slice(0, 3).map(([scent, prob]) => (
-                                  <Typography key={scent} variant="caption">
-                                    {scent}: {(prob * 100).toFixed(1)}%
-                                  </Typography>
-                                ))}
-                              </Box>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <Typography variant="caption">
-                              {formatTime(pred.timestamp)}
-                            </Typography>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              )}
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Instructions */}
-        <Grid item xs={12}>
-          <Alert severity="info">
-            <Typography variant="subtitle2" gutterBottom>
-              💡 ML Model Information
-            </Typography>
-            <Typography variant="body2">
-              • Model is served by Python script at <code>ml/serve.py</code>
-              <br />• Training performed in <code>ml/scentdetection.ipynb</code>
-              <br />• To retrain: Run the Jupyter notebook with your dataset
-              <br />• Expected accuracy: 85-95% on scent classes
-              <br />• Best performance during exposure phase when sensors respond strongest
-            </Typography>
-          </Alert>
-        </Grid>
-      </Grid>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+      </Paper>
     </Container>
   );
 }
 
+function MetricRow({ label, value }) {
+  return (
+    <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 0.5 }}>
+      <Typography variant="body2" color="text.secondary">{label}</Typography>
+      <Typography variant="body2" sx={{ fontVariantNumeric: 'tabular-nums' }}>{value}</Typography>
+    </Box>
+  );
+}

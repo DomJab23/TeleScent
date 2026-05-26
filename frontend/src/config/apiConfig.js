@@ -8,15 +8,15 @@ const getApiUrl = () => {
     return process.env.REACT_APP_API_URL;
   }
   
-  // If we're on a tunnel service (ngrok, localhost.run, serveo, etc), use the same origin
-  if (window.location.hostname.includes('ngrok') || 
-      window.location.hostname.includes('lhr.life') || 
-      window.location.hostname.includes('serveo')) {
-    return window.location.origin;
+  // Local dev: separate frontend (3000) and backend (5001)
+  const host = window.location.hostname;
+  if (host === 'localhost' || host === '127.0.0.1') {
+    return 'http://localhost:5001';
   }
-  
-  // Default to localhost for local development
-  return 'http://localhost:5001';
+
+  // Anywhere else (Cloud Run, ngrok, lhr.life, custom domain) the frontend is
+  // served by the same Node server that exposes the API → use the page origin.
+  return window.location.origin;
 };
 
 const API_URL = getApiUrl();
@@ -47,7 +47,6 @@ export const apiClient = {
         ...options,
         headers: {
           'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true',
           ...options.headers,
         },
         credentials: 'include', // Send cookies with requests

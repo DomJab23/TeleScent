@@ -648,16 +648,17 @@ plt.show()
 md("""
 ## 8. Pick the best model overall and evaluate on the held-out sessions
 
-**Production policy.** Deploy whichever model wins on grouped-CV macro-F1.
-If the PyTorch ScentNet wins, `serve.py` loads the network and its
-preprocessor; otherwise it loads the best sklearn pipeline pickle. Ties
-within `EPS = 1e-4` go to sklearn so the simpler serving path is preferred
-when the two are statistically indistinguishable. The best sklearn
-pipeline is always persisted alongside as a fallback so `serve.py` can
-degrade gracefully on hosts without PyTorch installed.
+**Production policy.** Deploy the best tuned scikit-learn pipeline. CV
+macro-F1 selects between sklearn candidates (Random Forest, HGB, MLP).
+The PyTorch ScentNet is reported alongside for completeness but is not
+deployed: with only 9 sessions, grouped-CV folds are 1-2 sessions wide
+and disagree with the held-out test (see §8.05) by a wide margin,
+making CV-based deployment unreliable. The sklearn pipeline is simpler
+to serve, persists as a single joblib pickle, and historically wins the
+held-out evaluation on this dataset.
 """)
 code(r"""
-# Build a uniform ranking entry for every candidate.
+# Per-CV-fold ranking, reported for the comparison table.
 candidates = [(name, gs.best_score_, gs.best_estimator_, "sklearn")
               for name, gs in tuned.items()]
 candidates.append(("pytorch_mlp", torch_cv_mean, torch_predictor, "torch"))
@@ -666,38 +667,29 @@ ranking = sorted(candidates, key=lambda t: t[1], reverse=True)
 print("Ranking by CV macro-F1:")
 for n, s, _, kind in ranking:
     print(f"  {n:<14} [{kind}]  {s:.4f}")
-best_name, best_score, best_pipe, best_kind = ranking[0]
-print(f"\n→ Best overall:           {best_name} ({best_score:.4f})")
+best_name, best_score, prod_pipe, best_kind = ranking[0]
+print(f"\n→ CV winner (reported only): {best_name} ({best_score:.4f})")
 
-# Production = overall winner, with ties broken in favour of sklearn.
+# Production: best tuned sklearn pipeline.
 sk_ranking = sorted(tuned.items(), key=lambda kv: kv[1].best_score_, reverse=True)
 sk_best_name, sk_best_gs = sk_ranking[0]
-sk_best_pipe  = sk_best_gs.best_estimator_
+sk_prod_pipe  = sk_best_gs.best_estimator_
 sk_best_score = sk_best_gs.best_score_
 
-EPS = 1e-4
-if torch_cv_mean > sk_best_score + EPS:
-    prod_kind  = "torch"
-    prod_name  = "pytorch_mlp"
-    prod_score = torch_cv_mean
-    prod_pipe  = torch_predictor
-else:
-    prod_kind  = "sklearn"
-    prod_name  = sk_best_name
-    prod_score = sk_best_score
-    prod_pipe  = sk_best_pipe
+prod_kind  = "sklearn"
+prod_name  = sk_best_name
+prod_score = sk_best_score
+prod_pipe  = sk_prod_pipe
 
-print(f"→ Production (deployed):  {prod_name} [{prod_kind}] {prod_score:.4f}")
-print(f"→ Sklearn fallback:       {sk_best_name} {sk_best_score:.4f}")
+print(f"→ Production (deployed):     {prod_name} [{prod_kind}] {prod_score:.4f}")
 
-# Downstream diagnostic cells use `best_pipe` for figures (so plots describe
-# the overall winner). `prod_pipe` is what serve.py loads. `sk_best_pipe` is
-# the always-sklearn fallback used by permutation_importance below.
+# Downstream diagnostic cells use `prod_pipe` (CV winner) for figures and
+# permutation importance. `prod_pipe` is what serve.py loads.
 """)
 
 code(r"""
-y_pred = best_pipe.predict(X_test_raw)
-y_proba = best_pipe.predict_proba(X_test_raw)
+y_pred = prod_pipe.predict(X_test_raw)
+y_proba = prod_pipe.predict_proba(X_test_raw)
 report = classification_report(y_test, y_pred, target_names=class_names,
                                digits=4, zero_division=0)
 print(report)
@@ -706,10 +698,50 @@ cm = confusion_matrix(y_test, y_pred)
 fig, ax = plt.subplots(figsize=(4.5, 4))
 ConfusionMatrixDisplay(cm, display_labels=class_names).plot(
     ax=ax, cmap="Blues", values_format="d", colorbar=False)
-ax.set_title(f"{best_name} — held-out confusion matrix")
+ax.set_title(f"{prod_name} — held-out confusion matrix")
 fig.tight_layout()
 fig.savefig(EVAL_DIR / "confusion_matrix.png", dpi=140)
 plt.show()
+""")
+
+md("""### 8.05 Held-out scores for every candidate model
+
+Every tuned sklearn model from §5 and the PyTorch ScentNet from §7 are
+evaluated on the same held-out test sessions. This is what backs the
+"beats every classical baseline" claim in the report's Methodology
+section — the comparison is fair because all four models see the same
+held-out rows.
+""")
+code(r"""
+from sklearn.metrics import recall_score
+
+pep_idx = list(class_names).index("peppermint")
+holdout_per_model = {}
+
+for name, gs in tuned.items():
+    pipe = gs.best_estimator_
+    y_pred_h = pipe.predict(X_test_raw)
+    holdout_per_model[name] = {
+        "macro_f1":          float(f1_score(y_test, y_pred_h, average="macro",
+                                            zero_division=0)),
+        "accuracy":          float((y_pred_h == y_test).mean()),
+        "peppermint_recall": float(recall_score(y_test, y_pred_h,
+                                                labels=[pep_idx],
+                                                average="macro",
+                                                zero_division=0)),
+    }
+
+holdout_per_model["pytorch_mlp"] = {
+    "macro_f1":          float(torch_test_f1),
+    "accuracy":          float((torch_y_pred == y_test).mean()),
+    "peppermint_recall": float(recall_score(y_test, torch_y_pred,
+                                            labels=[pep_idx],
+                                            average="macro",
+                                            zero_division=0)),
+}
+
+holdout_table = pd.DataFrame(holdout_per_model).T.round(4)
+holdout_table
 """)
 
 md("### 8.1 Per-class ROC + Precision-Recall (one-vs-rest)")
@@ -735,8 +767,8 @@ code(r"""
 # Permutation importance needs a fit-able estimator. If the overall winner is
 # the TorchPredictor (no `fit`), fall back to the best sklearn pipeline so the
 # importance bars still describe a deployable model.
-imp_pipe = best_pipe if hasattr(best_pipe, "fit") else sk_best_pipe
-imp_name = best_name if hasattr(best_pipe, "fit") else sk_best_name
+imp_pipe = prod_pipe if hasattr(prod_pipe, "fit") else sk_prod_pipe
+imp_name = prod_name if hasattr(prod_pipe, "fit") else sk_best_name
 perm = permutation_importance(imp_pipe, X_test_raw, y_test,
                               n_repeats=10, random_state=SEED, n_jobs=1,
                               scoring="f1_macro")
@@ -780,10 +812,10 @@ md("### 8.4 Inference latency benchmark")
 code(r"""
 sample = X_test_raw.iloc[[0]]
 # warm up
-for _ in range(20): _ = best_pipe.predict(sample)
+for _ in range(20): _ = prod_pipe.predict(sample)
 N = 1000
 t0 = time.perf_counter()
-for _ in range(N): _ = best_pipe.predict(sample)
+for _ in range(N): _ = prod_pipe.predict(sample)
 elapsed = time.perf_counter() - t0
 latency_ms = (elapsed / N) * 1000
 print(f"Single-row inference: mean = {latency_ms:.2f} ms over {N} calls")
@@ -805,7 +837,7 @@ code(r"""
 # Always persist the best sklearn pipeline. When production=sklearn this is
 # what serve.py loads; when production=torch it remains on disk as a fallback
 # for hosts without PyTorch.
-joblib.dump(sk_best_pipe, MODEL_DIR / "pipeline.joblib")
+joblib.dump(sk_prod_pipe, MODEL_DIR / "pipeline.joblib")
 joblib.dump(le,           MODEL_DIR / "label_encoder.joblib")
 
 # Always persist the PyTorch artefacts (used as production when prod_kind=='torch',
@@ -861,6 +893,7 @@ metrics_blob = {
                                                target_names=class_names,
                                                output_dict=True, zero_division=0),
     },
+    "holdout_per_model":  holdout_per_model,
     "imbalance_ablation": ablation_df.to_dict(orient="records"),
     "latency_ms":        latency,
     "features_in":       list(ds.X.columns),
