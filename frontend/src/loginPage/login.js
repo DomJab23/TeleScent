@@ -84,15 +84,9 @@ export default function SignIn(props) {
 
           <Button
             fullWidth
-            variant="contained"
+            variant="outlined"
             onClick={() => navigate('/register')}
-            sx={{
-              mt: 1,
-              mb: 2,
-              backgroundColor: 'grey.200',
-              color: 'text.primary',
-              '&:hover': { backgroundColor: 'grey.300' },
-            }}
+            sx={{ mt: 1, mb: 2 }}
           >
             Create an account
           </Button>

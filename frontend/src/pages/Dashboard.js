@@ -19,6 +19,7 @@ import { apiClient } from '../config/apiConfig';
 import { timeAgo, formatScent } from '../utils/format';
 
 const POLL_MS = 3000;
+const STALE_MS = 15000;
 
 export default function Dashboard() {
   const theme = useTheme();
@@ -26,6 +27,7 @@ export default function Dashboard() {
   const [predictions, setPredictions] = useState({});
   const [modelInfo, setModelInfo] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(null);
   const [detectError, setDetectError] = useState(null);
   const [isDetecting, setIsDetecting] = useState(false);
   const [, setTick] = useState(0);
@@ -39,8 +41,9 @@ export default function Dashboard() {
       ]);
       setDevices(s.devices || {});
       setPredictions(p.predictions || {});
+      setFetchError(null);
     } catch (err) {
-      // Keep last good state on transient network errors.
+      setFetchError(err.message || 'Backend unreachable');
     } finally {
       setLoading(false);
     }
@@ -81,6 +84,18 @@ export default function Dashboard() {
 
   const updatedAt = firstDevice?.lastUpdate || prediction?.timestamp;
   const fromDb = firstDevice?.source === 'database' || prediction?.source === 'database';
+  const ageMs = updatedAt ? Date.now() - new Date(updatedAt).getTime() : null;
+  const live = ageMs != null && ageMs < STALE_MS;
+
+  const statusChip = fetchError
+    ? { label: 'Backend unreachable', color: 'error', filled: true }
+    : !firstDevice
+      ? { label: 'No device', color: 'default', filled: false }
+      : fromDb
+        ? { label: 'Last DB record', color: 'info', filled: false }
+        : live
+          ? { label: 'Live', color: 'success', filled: true }
+          : { label: `Stale · ${timeAgo(updatedAt)}`, color: 'warning', filled: false };
 
   const startDetection = async () => {
     setIsDetecting(true);
@@ -106,6 +121,12 @@ export default function Dashboard() {
       <Box sx={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', mb: 3 }}>
         <Typography variant="h4" sx={{ fontWeight: 600 }}>Dashboard</Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          <Chip
+            size="small"
+            label={statusChip.label}
+            color={statusChip.color}
+            variant={statusChip.filled ? 'filled' : 'outlined'}
+          />
           <Chip
             size="small"
             label={`${deviceIds.length} device${deviceIds.length === 1 ? '' : 's'}`}

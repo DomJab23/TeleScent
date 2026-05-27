@@ -59,7 +59,18 @@ export default function Register() {
         <Box component="form" onSubmit={handleSubmit} noValidate sx={{ mt: 2, width: '100%' }}>
           <TextField margin="normal" required fullWidth id="name" label="Full Name" name="name" autoFocus />
           <TextField margin="normal" required fullWidth id="email" label="Email Address" name="email" type="email" autoComplete="email" />
-          <TextField margin="normal" required fullWidth name="password" label="Password" type="password" id="password" autoComplete="new-password" />
+          <TextField
+            margin="normal"
+            required
+            fullWidth
+            name="password"
+            label="Password"
+            type="password"
+            id="password"
+            autoComplete="new-password"
+            inputProps={{ minLength: 3, maxLength: 100 }}
+            helperText="3–100 characters"
+          />
           {error && <Alert severity="error" sx={{ mt: 1 }}>{error}</Alert>}
           <Button
             type="submit"
