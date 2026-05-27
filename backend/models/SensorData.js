@@ -1,4 +1,3 @@
-// models/SensorData.js
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('./database');
 
@@ -23,9 +22,8 @@ const SensorData = sequelize.define('SensorData', {
     allowNull: false,
     defaultValue: DataTypes.NOW,
   },
-  // Sensor values stored as JSON array [sensor0, sensor1, ..., sensor5]
   sensorValues: {
-    type: DataTypes.TEXT, // Store as JSON string
+    type: DataTypes.TEXT,
     allowNull: false,
     get() {
       const raw = this.getDataValue('sensorValues');
@@ -35,41 +33,25 @@ const SensorData = sequelize.define('SensorData', {
       this.setDataValue('sensorValues', JSON.stringify(value));
     },
   },
-  // Individual sensor values for easy querying
   sensor0: DataTypes.FLOAT,
   sensor1: DataTypes.FLOAT,
   sensor2: DataTypes.FLOAT,
   sensor3: DataTypes.FLOAT,
   sensor4: DataTypes.FLOAT,
   sensor5: DataTypes.FLOAT,
-  // Named chemical sensor values (required for ML retraining)
-  ethanol: {
-    type: DataTypes.FLOAT,
-    allowNull: true,
-  },
-  coH2: {
-    type: DataTypes.FLOAT,
-    allowNull: true,
-  },
-  vocRaw: {
-    type: DataTypes.FLOAT,
-    allowNull: true,
-  },
-  noxRaw: {
-    type: DataTypes.FLOAT,
-    allowNull: true,
-  },
-  // Collection session metadata
+  ethanol: { type: DataTypes.FLOAT, allowNull: true },
+  coH2:    { type: DataTypes.FLOAT, allowNull: true },
+  vocRaw:  { type: DataTypes.FLOAT, allowNull: true },
+  noxRaw:  { type: DataTypes.FLOAT, allowNull: true },
   sessionId: {
     type: DataTypes.STRING,
     allowNull: true,
     index: true,
   },
   phase: {
-    type: DataTypes.STRING, // stabilisation | exposure | recovery
+    type: DataTypes.STRING,
     allowNull: true,
   },
-  // ML prediction results
   predictedScent: {
     type: DataTypes.STRING,
     allowNull: true,

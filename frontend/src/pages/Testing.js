@@ -44,8 +44,8 @@ function ts() {
 export default function TestingConsole() {
   const theme = useTheme();
   const [sendText, setSendText] = useState(SAMPLE_PAYLOAD);
-  const [backendStatus, setBackendStatus] = useState('unknown'); // unknown | ok | error
-  const [log, setLog] = useState([]); // {dir: 'in'|'out', text, ts}
+  const [backendStatus, setBackendStatus] = useState('unknown');
+  const [log, setLog] = useState([]);
 
   const pushLog = useCallback((entry) => {
     setLog((l) => [{ ...entry, ts: ts() }, ...l].slice(0, 500));

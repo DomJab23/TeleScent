@@ -44,11 +44,10 @@ const User = sequelize.define('User', {
     defaultValue: true,
   },
 }, {
-  timestamps: true, // Adds createdAt and updatedAt
+  timestamps: true,
   tableName: 'users',
 });
 
-// Hash password before saving
 User.beforeCreate(async (user) => {
   if (user.password) {
     const saltRounds = 10;
@@ -63,12 +62,10 @@ User.beforeUpdate(async (user) => {
   }
 });
 
-// Instance method to check password
 User.prototype.comparePassword = async function(candidatePassword) {
   return bcrypt.compare(candidatePassword, this.password);
 };
 
-// Instance method to get user data without password
 User.prototype.toJSON = function() {
   const values = Object.assign({}, this.get());
   delete values.password;

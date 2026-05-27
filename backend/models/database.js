@@ -1,14 +1,12 @@
 const { Sequelize } = require('sequelize');
 const path = require('path');
 
-// Initialize SQLite database
 const sequelize = new Sequelize({
   dialect: 'sqlite',
   storage: path.join(__dirname, '../database.sqlite'),
-  logging: console.log, // Set to false in production
+  logging: console.log,
 });
 
-// Test the connection
 async function testConnection() {
   try {
     await sequelize.authenticate();

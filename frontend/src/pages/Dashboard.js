@@ -16,27 +16,9 @@ import {
   useTheme,
 } from '@mui/material';
 import { apiClient } from '../config/apiConfig';
+import { timeAgo, formatScent } from '../utils/format';
 
 const POLL_MS = 3000;
-
-function timeAgo(ts) {
-  if (!ts) return '—';
-  const ms = Date.now() - new Date(ts).getTime();
-  if (ms < 0 || Number.isNaN(ms)) return '—';
-  if (ms < 1000) return 'just now';
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s ago`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
-}
-
-function formatScent(s) {
-  if (!s) return '—';
-  return s.replace(/_/g, ' ');
-}
 
 export default function Dashboard() {
   const theme = useTheme();
@@ -58,7 +40,7 @@ export default function Dashboard() {
       setDevices(s.devices || {});
       setPredictions(p.predictions || {});
     } catch (err) {
-      // network blips are fine; we keep last good state
+      // Keep last good state on transient network errors.
     } finally {
       setLoading(false);
     }
@@ -81,7 +63,6 @@ export default function Dashboard() {
   const reading = firstDevice?.latestReading || null;
   const prediction = firstDeviceId ? (predictions[firstDeviceId] || reading?.ml_prediction) : null;
 
-  // Build a recent-predictions list across devices (latest only per device)
   const recent = deviceIds
     .map((id) => {
       const dev = devices[id];
@@ -144,7 +125,6 @@ export default function Dashboard() {
           gap: 3,
         }}
       >
-        {/* Latest detection — big card */}
         <Paper elevation={0} sx={cardSx}>
           <Typography variant="overline" color="text.secondary">Latest detection</Typography>
           {loading ? (
@@ -210,7 +190,6 @@ export default function Dashboard() {
           {detectError && <Alert severity="error" sx={{ mt: 2 }}>{detectError}</Alert>}
         </Paper>
 
-        {/* Right column */}
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           <Paper elevation={0} sx={cardSx}>
             <Typography variant="overline" color="text.secondary">Live sensors</Typography>

@@ -18,30 +18,9 @@ import {
   useTheme,
 } from '@mui/material';
 import { apiClient } from '../config/apiConfig';
+import { timeAgo, formatScent, pct } from '../utils/format';
 
 const POLL_MS = 3000;
-
-function timeAgo(ts) {
-  if (!ts) return '—';
-  const ms = Date.now() - new Date(ts).getTime();
-  if (ms < 0 || Number.isNaN(ms)) return '—';
-  if (ms < 1000) return 'just now';
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s ago`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  return h < 24 ? `${h}h ago` : `${Math.floor(h / 24)}d ago`;
-}
-
-function formatScent(s) {
-  return s ? s.replace(/_/g, ' ') : '—';
-}
-
-function pct(v) {
-  if (v == null || Number.isNaN(v)) return '—';
-  return `${(v * 100).toFixed(1)}%`;
-}
 
 export default function MLConsole() {
   const theme = useTheme();
@@ -122,7 +101,6 @@ export default function MLConsole() {
           mb: 3,
         }}
       >
-        {/* Model card */}
         <Paper elevation={0} sx={cardSx}>
           <Typography variant="overline" color="text.secondary">Production model</Typography>
           {!mlInfo ? (
@@ -154,7 +132,6 @@ export default function MLConsole() {
           )}
         </Paper>
 
-        {/* Per-class card */}
         <Paper elevation={0} sx={cardSx}>
           <Typography variant="overline" color="text.secondary">Per-class performance (holdout)</Typography>
           {!mlInfo ? (
@@ -190,7 +167,6 @@ export default function MLConsole() {
         </Paper>
       </Box>
 
-      {/* Live predictions */}
       <Paper elevation={0} sx={cardSx}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
           <Typography variant="overline" color="text.secondary">Live predictions per device</Typography>

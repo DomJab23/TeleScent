@@ -8,44 +8,25 @@ import Register from './pages/Register';
 import SensorData from './pages/SensorData';
 import ProtectedRoute from './components/ProtectedRoute';
 
+const PROTECTED_ROUTES = [
+  { path: '/dashboard',   element: <Dashboard /> },
+  { path: '/testing',     element: <Testing /> },
+  { path: '/ml',          element: <MLConsole /> },
+  { path: '/sensor-data', element: <SensorData /> },
+];
+
 function AppRoutes() {
-  // All routes except login and register require authentication
   return (
     <Routes>
       <Route path="/login" element={<SignIn />} />
       <Route path="/register" element={<Register />} />
-      <Route 
-        path="/dashboard" 
-        element={
-          <ProtectedRoute>
-            <Dashboard />
-          </ProtectedRoute>
-        } 
-      />
-      <Route 
-        path="/testing" 
-        element={
-          <ProtectedRoute>
-            <Testing />
-          </ProtectedRoute>
-        } 
-      />
-      <Route 
-        path="/ml" 
-        element={
-          <ProtectedRoute>
-            <MLConsole />
-          </ProtectedRoute>
-        } 
-      />
-      <Route 
-        path="/sensor-data" 
-        element={
-          <ProtectedRoute>
-            <SensorData />
-          </ProtectedRoute>
-        } 
-      />
+      {PROTECTED_ROUTES.map(({ path, element }) => (
+        <Route
+          key={path}
+          path={path}
+          element={<ProtectedRoute>{element}</ProtectedRoute>}
+        />
+      ))}
       <Route path="/" element={<Navigate to="/login" replace />} />
     </Routes>
   );

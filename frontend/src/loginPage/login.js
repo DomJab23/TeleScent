@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import Avatar from '@mui/material/Avatar';
 import Button from '@mui/material/Button';
@@ -11,32 +11,26 @@ import Box from '@mui/material/Box';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import Typography from '@mui/material/Typography';
 import Container from '@mui/material/Container';
-import { apiClient } from '../config/apiConfig';
 
 export default function SignIn(props) {
   const navigate = useNavigate();
-  const [error, setError] = useState('');
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    
-    // BYPASS MODE: Direct navigation to dashboard without any API call
-    // Store fake token and user data
+
     localStorage.setItem('token', 'bypass-token-' + Date.now());
     localStorage.setItem('user', JSON.stringify({
       id: 1,
       username: 'admin',
       email: 'admin@telescent.com',
       firstName: 'Admin',
-      lastName: 'User'
+      lastName: 'User',
     }));
 
-    // Call parent callback if provided
     if (props && typeof props.onLoginSuccess === 'function') {
       props.onLoginSuccess({ username: 'admin' });
     }
 
-    // Navigate directly to dashboard
     navigate('/dashboard');
   };
 
@@ -79,11 +73,6 @@ export default function SignIn(props) {
             control={<Checkbox value="remember" color="primary" />}
             label="Remember me"
           />
-          {error && (
-            <Typography color="error" sx={{ mt: 1 }}>
-              {error}
-            </Typography>
-          )}
           <Button
             type="submit"
             fullWidth
@@ -93,7 +82,6 @@ export default function SignIn(props) {
             Sign In
           </Button>
 
-          {/* Registration button styled light gray, similar size to Sign In */}
           <Button
             fullWidth
             variant="contained"

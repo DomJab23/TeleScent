@@ -43,7 +43,6 @@ export default function NavBar() {
     <Box sx={{ flexGrow: 1 }}>
       <AppBar position="static">
         <Toolbar>
-          {/* Logo on the left */}
           <Typography
             variant="h6"
             component="div"
@@ -53,7 +52,6 @@ export default function NavBar() {
             TeleScent
           </Typography>
 
-          {/* Centered horizontal page selector (Tabs) */}
           <Box sx={{ flexGrow: 1, display: 'flex', justifyContent: 'center' }}>
             <Tabs
               value={currentPath}
@@ -74,8 +72,6 @@ export default function NavBar() {
             </Tabs>
           </Box>
 
-          {/* Right-side icons */}
-          {/* Theme toggle moved to navbar */}
           <ThemeToggle />
 
           <Tooltip title={localStorage.getItem('token') ? 'Logout' : 'Login'}>
@@ -85,7 +81,6 @@ export default function NavBar() {
               color="inherit"
               onClick={() => {
                 if (localStorage.getItem('token')) {
-                  // Show logout confirmation dialog
                   setOpenLogoutDialog(true);
                 } else {
                   navigate('/login');
@@ -98,7 +93,6 @@ export default function NavBar() {
         </Toolbar>
       </AppBar>
 
-      {/* Logout Confirmation Dialog */}
       <Dialog
         open={openLogoutDialog}
         onClose={() => setOpenLogoutDialog(false)}

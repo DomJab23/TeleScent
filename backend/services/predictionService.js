@@ -1,204 +1,106 @@
 const { spawn } = require('child_process');
 const path = require('path');
-const { sensorDataStore, predictionStore } = require('./dataStore');
+const { sensorDataStore, predictionStore, storePrediction } = require('./dataStore');
+const { emitterOff } = require('./sensorPayload');
 
-// Scent to Emitter Mapping
-// Active 3-class model: no_scent, sweet_orange, peppermint
 const SCENT_EMITTER_MAP = {
-  'no_scent':     { channel: -1, intensity: 0 },   // baseline - no emission
+  'no_scent':     { channel: -1, intensity: 0 },
   'sweet_orange': { channel: 2,  intensity: 200 },
   'peppermint':   { channel: 4,  intensity: 200 },
-  // Legacy mappings retained so older data/labels still emit something sensible
-  'cinnamon':    { channel: 0, intensity: 200 },
-  'gingerbread': { channel: 1, intensity: 200 },
-  'norange':     { channel: 2, intensity: 200 },
-  'orange':      { channel: 2, intensity: 200 },
-  'vanilla':     { channel: 3, intensity: 200 },
-  'banana':      { channel: 5, intensity: 200 },
-  'coconut':     { channel: 6, intensity: 200 },
-  'pineapple':   { channel: 7, intensity: 200 }
+  'cinnamon':     { channel: 0, intensity: 200 },
+  'gingerbread':  { channel: 1, intensity: 200 },
+  'norange':      { channel: 2, intensity: 200 },
+  'orange':       { channel: 2, intensity: 200 },
+  'vanilla':      { channel: 3, intensity: 200 },
+  'banana':       { channel: 5, intensity: 200 },
+  'coconut':      { channel: 6, intensity: 200 },
+  'pineapple':    { channel: 7, intensity: 200 },
 };
 
-/**
- * Convert ML prediction to emitter control format
- * @param {string} scent - Predicted scent name
- * @param {number} confidence - Confidence level (0-1)
- * @returns {Object} Emitter control object {0:0, 1:0, 2:255, ...}
- */
 function scentToEmitterControl(scent, confidence) {
-  // Initialize all emitters to off
-  const emitterControl = {
-    "0": 0, "1": 0, "2": 0, "3": 0,
-    "4": 0, "5": 0, "6": 0, "7": 0
-  };
-  
-  // Special case: no_scent means no emitter activation
+  const emitterControl = emitterOff();
+
   if (scent.toLowerCase() === 'no_scent') {
-    console.log(`🎚️  Emitter control: no_scent → All channels OFF (no emission)`);
     return emitterControl;
   }
-  
-  // Get emitter configuration for this scent
-  const emitterConfig = SCENT_EMITTER_MAP[scent.toLowerCase()];
-  
-  if (emitterConfig && emitterConfig.channel >= 0) {
-    // Scale intensity by confidence (minimum 100 to be noticeable)
-    const scaledIntensity = Math.max(100, Math.round(emitterConfig.intensity * confidence));
-    emitterControl[emitterConfig.channel.toString()] = scaledIntensity;
-    console.log(`🎚️  Emitter control: ${scent} → Channel ${emitterConfig.channel} @ ${scaledIntensity}`);
+
+  const cfg = SCENT_EMITTER_MAP[scent.toLowerCase()];
+  if (cfg && cfg.channel >= 0) {
+    const scaledIntensity = Math.max(100, Math.round(cfg.intensity * confidence));
+    emitterControl[cfg.channel.toString()] = scaledIntensity;
   } else {
-    console.warn(`⚠️  No emitter mapping found for scent: "${scent}"`);
+    console.warn(`No emitter mapping for scent: "${scent}"`);
   }
-  
+
   return emitterControl;
 }
 
-/**
- * Call Python ML model for scent prediction
- * @param {Object} sensorReading - Sensor data in Arduino format
- * @returns {Promise<Object>} - Prediction result
- */
+function resolvePythonPath() {
+  if (process.env.PYTHON_PATH) return process.env.PYTHON_PATH;
+  return process.env.DOCKER_ENV === 'true'
+    ? '/app/venv/bin/python3'
+    : '/home/klaus/venv/bin/python3';
+}
+
 async function getPrediction(sensorReading) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const pythonScript = path.join(__dirname, '../../ml/serve.py');
-    // Detect if running in Docker and use appropriate Python path
-    const isDocker = process.env.DOCKER_ENV === 'true';
-    // Use virtual environment Python with ML packages installed
-    const pythonPath = process.env.PYTHON_PATH ||
-      (isDocker ? '/app/venv/bin/python3' : '/home/klaus/venv/bin/python3');
-    const python = spawn(pythonPath, [pythonScript]);
-    
+    const python = spawn(resolvePythonPath(), [pythonScript]);
+
     let outputData = '';
     let errorData = '';
-    
-    // Send sensor data to Python script via stdin
+
     python.stdin.write(JSON.stringify(sensorReading));
     python.stdin.end();
-    
-    // Collect output
-    python.stdout.on('data', (data) => {
-      outputData += data.toString();
-    });
-    
-    python.stderr.on('data', (data) => {
-      errorData += data.toString();
-    });
-    
+
+    python.stdout.on('data', (data) => { outputData += data.toString(); });
+    python.stderr.on('data', (data) => { errorData += data.toString(); });
+
     python.on('close', (code) => {
       if (code !== 0) {
-        console.error('❌ Python prediction error (exit code ' + code + '):');
-        console.error('   stderr:', errorData);
-        console.error('   stdout:', outputData);
-        resolve({
-          predicted_scent: 'error',
-          confidence: 0.0,
-          error: 'Prediction service unavailable'
-        });
-      } else {
-        try {
-          const result = JSON.parse(outputData);
-          resolve(result);
-        } catch (e) {
-          console.error('❌ Failed to parse prediction:', e);
-          console.error('   Output was:', outputData);
-          resolve({
-            predicted_scent: 'error',
-            confidence: 0.0,
-            error: 'Invalid prediction response'
-          });
-        }
+        console.error(`Python prediction error (exit ${code}): ${errorData}`);
+        resolve({ predicted_scent: 'error', confidence: 0.0, error: 'Prediction service unavailable' });
+        return;
+      }
+      try {
+        resolve(JSON.parse(outputData));
+      } catch (e) {
+        console.error('Failed to parse prediction:', e, 'Output:', outputData);
+        resolve({ predicted_scent: 'error', confidence: 0.0, error: 'Invalid prediction response' });
       }
     });
   });
 }
 
-/**
- * Process sensor data and generate predictions
- */
 async function processSensorData() {
   try {
-    // Get all devices with sensor data
-    const deviceIds = Object.keys(sensorDataStore);
-    
-    if (deviceIds.length === 0) {
-      return; // No data to process
-    }
-    
-    for (const deviceId of deviceIds) {
+    for (const deviceId of Object.keys(sensorDataStore)) {
       const deviceData = sensorDataStore[deviceId];
-      
-      if (!deviceData || deviceData.length === 0) {
-        continue;
-      }
-      
-      // Get the latest sensor reading
+      if (!deviceData || deviceData.length === 0) continue;
+
       const latestReading = deviceData[deviceData.length - 1];
-      
-      // Check if we've already processed this reading
       const lastProcessedTime = predictionStore[deviceId]?.lastProcessedTime;
-      if (lastProcessedTime && lastProcessedTime === latestReading.receivedAt) {
-        continue; // Already processed this reading
-      }
-      
-      // Run ML prediction
-      console.log(`🔮 Running prediction for ${deviceId}...`);
+      if (lastProcessedTime && lastProcessedTime === latestReading.receivedAt) continue;
+
       const prediction = await getPrediction(latestReading);
-      console.log(`🤖 ML Prediction: ${prediction.predicted_scent} (${(prediction.confidence * 100).toFixed(1)}%)`);
-      
-      // Convert to emitter control format
       const emitterControl = scentToEmitterControl(prediction.predicted_scent, prediction.confidence);
-      
-      // Store the prediction
-      predictionStore[deviceId] = {
-        scent: prediction.predicted_scent,
-        confidence: prediction.confidence,
-        top_predictions: prediction.top_predictions,
-        emitter_control: emitterControl,
-        timestamp: new Date().toISOString(),
-        lastProcessedTime: latestReading.receivedAt,
-        sensorData: {
-          deviceId: latestReading.deviceId,
-          temperature: latestReading.temperature,
-          humidity: latestReading.humidity,
-          pressure: latestReading.pressure,
-          gas: latestReading.gas,
-          voc_raw: latestReading.voc_raw,
-          nox_raw: latestReading.nox_raw,
-          no2: latestReading.no2,
-          ethanol: latestReading.ethanol,
-          voc: latestReading.voc,
-          co_h2: latestReading.co_h2
-        }
-      };
-      
-      console.log(`✅ Prediction stored for ${deviceId}:`, emitterControl);
+      storePrediction(deviceId, prediction, latestReading, emitterControl);
     }
-    
   } catch (error) {
-    console.error('⚠️  Error in prediction service:', error);
+    console.error('Error in prediction service:', error);
   }
 }
 
-/**
- * Start the prediction service with periodic processing
- * @param {number} intervalMs - Processing interval in milliseconds (default: 5000)
- */
 function startPredictionService(intervalMs = 5000) {
-  console.log(`🚀 Starting prediction service (checking every ${intervalMs}ms)`);
-  
-  // Initial run
+  console.log(`Starting prediction service (checking every ${intervalMs}ms)`);
   processSensorData();
-  
-  // Set up periodic processing
   const interval = setInterval(processSensorData, intervalMs);
-  
-  // Return control object to stop service if needed
   return {
     stop: () => {
-      console.log('🛑 Stopping prediction service');
+      console.log('Stopping prediction service');
       clearInterval(interval);
     },
-    processNow: processSensorData
+    processNow: processSensorData,
   };
 }
 
@@ -206,5 +108,5 @@ module.exports = {
   startPredictionService,
   processSensorData,
   scentToEmitterControl,
-  getPrediction
+  getPrediction,
 };

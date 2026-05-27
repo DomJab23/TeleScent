@@ -1,9 +1,3 @@
-"""
-Feature engineering for the TeleScent classifier.
-
-Implemented as a stateless scikit-learn transformer so the same code runs
-during training and at inference (called from serve.py).
-"""
 from __future__ import annotations
 
 import numpy as np
@@ -11,10 +5,6 @@ import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 
 
-# Canonical names used inside the feature transformer. Both training rows
-# (CSV columns: Sensor 4, Sensor 5, Ethanol, CoH2, VocRaw, NoxRaw) and
-# inference inputs (Arduino: voc, no2, ethanol, co_h2, voc_raw, nox_raw) are
-# normalised onto these names before transformation.
 CANONICAL = {
     "VOC_multichannel": ["VOC_multichannel", "Sensor 4", "voc", "VOC"],
     "NO2":             ["NO2", "Sensor 5", "no2"],
@@ -32,7 +22,6 @@ ENV_COLS = {
 
 
 def _canonicalise(df: pd.DataFrame) -> pd.DataFrame:
-    """Rename whatever sensor columns are present to the canonical names."""
     out = pd.DataFrame(index=df.index)
     for canon, aliases in {**CANONICAL, **ENV_COLS}.items():
         for a in aliases:
@@ -45,38 +34,25 @@ def _canonicalise(df: pd.DataFrame) -> pd.DataFrame:
 
 
 class ScentFeatureBuilder(BaseEstimator, TransformerMixin):
-    """Add hand-crafted gas-chemistry features on top of raw sensor readings.
-
-    Mirrors the engineered features that the legacy retrain_models.py used,
-    extended with environmental ratios. Output column order is fixed, so the
-    pipeline persisted as `pipeline.joblib` reproduces the same feature space
-    at inference time.
-    """
-
     OUT_COLS = [
         "VOC_multichannel", "NO2", "Ethanol", "CoH2", "VocRaw", "NoxRaw",
-        # Temperature and Humidity intentionally NOT exposed as raw features:
-        # they are near-constant within a session and drift between sessions,
-        # so the model would learn session identity rather than scent.
-        # GasResist stays — it responds to VOC exposure within a session.
+        # Temperature/Humidity excluded as raw features: near-constant within
+        # a session, so the model would learn session identity. GasResist
+        # stays — it responds to VOC exposure within a session.
         "GasResist",
         "voc_ratio", "ethanol_voc_ratio", "voc_balance",
         "nox_intensity", "nox_balance",
         "voc_no2_interaction", "ethanol_no2_ratio", "co_voc_ratio",
         "total_voc_intensity", "chemical_diversity", "gas_dominance",
         "vocraw_log", "noxraw_log",
-        # Environmental interactions — MOX gas sensors are strongly affected
-        # by humidity and temperature. Every feature here multiplies an env
-        # channel with a gas channel, so it carries scent signal rather than
-        # being a pure room-conditions fingerprint. `abs_humidity_proxy` is
-        # deliberately excluded for that reason.
+        # Env interactions only mix env with a gas channel, never env alone.
         "gas_temp_ratio", "gas_humidity_ratio",
         "voc_humidity_corrected", "voc_temp_corrected",
         "humidity_voc_interaction", "ethanol_humidity_ratio",
         "gasresist_log",
     ]
 
-    def fit(self, X, y=None):  # noqa: D401 - sklearn API
+    def fit(self, X, y=None):
         return self
 
     def transform(self, X):
@@ -106,8 +82,6 @@ class ScentFeatureBuilder(BaseEstimator, TransformerMixin):
         out["vocraw_log"] = np.log1p(c["VocRaw"].clip(lower=0))
         out["noxraw_log"] = np.log1p(c["NoxRaw"].clip(lower=0))
 
-        # Environmental physics — only features that mix env with a gas
-        # channel survive, so they cannot encode session identity alone.
         t = c["Temperature"]
         rh = c["Humidity"]
         out["gas_temp_ratio"]      = c["GasResist"] / (t + eps)

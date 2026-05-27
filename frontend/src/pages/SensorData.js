@@ -14,28 +14,10 @@ import {
 } from '@mui/material';
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
 import { apiClient } from '../config/apiConfig';
+import { timeAgo, formatScent } from '../utils/format';
 
 const POLL_MS = 3000;
 const STALE_MS = 15000;
-
-function timeAgo(ts) {
-  if (!ts) return '—';
-  const ms = Date.now() - new Date(ts).getTime();
-  if (ms < 0 || Number.isNaN(ms)) return '—';
-  if (ms < 1000) return 'just now';
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s ago`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
-}
-
-function formatScent(s) {
-  if (!s) return '—';
-  return s.replace(/_/g, ' ');
-}
 
 function SensorPill({ label, value, unit }) {
   const text = value == null || Number.isNaN(value)
@@ -62,7 +44,7 @@ export default function SensorData() {
   const [selectedDevice, setSelectedDevice] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [, setTick] = useState(0); // re-render for time-ago
+  const [, setTick] = useState(0);
   const pollRef = useRef(null);
   const sseRef = useRef(null);
   const selectedDeviceRef = useRef(null);
@@ -114,9 +96,9 @@ export default function SensorData() {
           setPredictions((prev) => ({ ...prev, [deviceId]: incomingPrediction }));
         }
         if (!selectedDeviceRef.current) setSelectedDevice(deviceId);
-      } catch (_) { /* ignore */ }
+      } catch (_) {}
     });
-    evt.onerror = () => { /* browser will retry; polling keeps things fresh */ };
+    evt.onerror = () => {};
 
     const ticker = setInterval(() => setTick((t) => t + 1), 1000);
     return () => {
@@ -143,7 +125,6 @@ export default function SensorData() {
     : 0;
   const scent = prediction?.scent && prediction.scent !== 'error' ? prediction.scent : null;
 
-  // Normalise top_predictions to array of {scent, confidence}
   const top = Array.isArray(prediction?.top_predictions)
     ? prediction.top_predictions
     : prediction?.top_predictions && typeof prediction.top_predictions === 'object'

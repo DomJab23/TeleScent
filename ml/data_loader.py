@@ -1,9 +1,3 @@
-"""
-TeleScent dataset loader.
-
-Loads the labelled CSV produced by `export_db_to_csv.py`, drops leakage columns,
-and exposes session-aware splits for grouped cross-validation.
-"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -50,12 +44,6 @@ def load_dataset(csv_path: Path | str = DEFAULT_CSV,
                  classes: Iterable[str] = DEFAULT_CLASSES,
                  sensor_cols: Iterable[str] = RAW_SENSOR_COLS,
                  drop_empty_cols: bool = True) -> Dataset:
-    """Load the labelled CSV, filter to the target classes, return a Dataset.
-
-    - Coerces sensor columns to numeric (BME688 readings).
-    - Drops sensor columns that are entirely empty (e.g. unused slot Sensor 2)
-      when `drop_empty_cols` is True.
-    """
     csv_path = Path(csv_path)
     df = pd.read_csv(csv_path)
 
@@ -82,13 +70,7 @@ def load_dataset(csv_path: Path | str = DEFAULT_CSV,
 def holdout_test_sessions(ds: Dataset,
                           target_frac: float = 0.2,
                           random_state: int = 42) -> tuple[np.ndarray, np.ndarray]:
-    """Hold out one session per class for a final test set.
-
-    Picks the session per class whose row count is closest to
-    `target_frac * (per-class total)` so the test set is ~20% and balanced.
-    Deterministic for a given dataset; `random_state` only breaks ties.
-    """
-    rng = np.random.default_rng(random_state)
+    _ = np.random.default_rng(random_state)
 
     test_sessions: list[str] = []
     for cls in sorted(ds.y.unique()):
@@ -97,14 +79,10 @@ def holdout_test_sessions(ds: Dataset,
         if cls_sessions.empty:
             continue
         target = max(1, int(round(cls_sessions.sum() * target_frac)))
-        # Prefer the session whose count is closest to target; on ties prefer
-        # the smaller (keeps the test set from accidentally dominating train).
+        # Tiebreaker prefers the smaller session so the test set can't dominate train.
         ranked = sorted(cls_sessions.items(),
                         key=lambda kv: (abs(kv[1] - target), kv[1], kv[0]))
-        picked = ranked[0][0]
-        # rng kept for API compatibility / future tie-breakers
-        _ = rng
-        test_sessions.append(picked)
+        test_sessions.append(ranked[0][0])
 
     mask_test = ds.groups.isin(test_sessions).to_numpy()
     test_idx = np.where(mask_test)[0]
@@ -114,6 +92,5 @@ def holdout_test_sessions(ds: Dataset,
 
 def grouped_cv_splitter(n_splits: int = 5,
                         random_state: int = 42) -> StratifiedGroupKFold:
-    """StratifiedGroupKFold so that no `Session ID` appears in both folds."""
     return StratifiedGroupKFold(n_splits=n_splits, shuffle=True,
                                 random_state=random_state)

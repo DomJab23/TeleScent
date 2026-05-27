@@ -30,14 +30,9 @@ export default function Register() {
 
     setSubmitting(true);
     try {
-      // Best-effort: hit backend if it accepts the request. If anything goes wrong,
-      // fall through to the same client-side bypass the login page uses so the
-      // user is never blocked from reaching the app.
       try {
         await apiClient.post('/api/auth/register', payload);
-      } catch (_) {
-        // intentionally ignored — auth is bypassed in this build
-      }
+      } catch (_) {}
       localStorage.setItem('token', 'bypass-token-' + Date.now());
       localStorage.setItem('user', JSON.stringify({
         id: 1,

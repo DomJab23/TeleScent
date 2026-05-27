@@ -1,16 +1,4 @@
 #!/usr/bin/env python3
-"""
-TeleScent ML inference service.
-
-Loads the production model selected by `scent_classification.ipynb`. The
-manifest `model/production.json` declares whether the deployed model is the
-sklearn pipeline or the PyTorch ScentNet; this script picks the matching
-backend on startup. If `kind == "torch"` but PyTorch is unavailable, falls
-back to the sklearn pipeline so the service stays up.
-
-Reads one JSON sensor reading from stdin, writes a JSON prediction to stdout.
-Called from the Node backend (see `backend/services/predictionService.js`).
-"""
 from __future__ import annotations
 
 import json
@@ -19,8 +7,8 @@ from pathlib import Path
 
 
 _HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(_HERE))           # for `import features`
-sys.path.insert(0, str(_HERE.parent))    # for `import ml.features`
+sys.path.insert(0, str(_HERE))
+sys.path.insert(0, str(_HERE.parent))
 
 try:
     import numpy as np  # noqa: F401
@@ -49,20 +37,8 @@ SCENTNET_WEIGHTS_PATH = MODEL_DIR / "scentnet.pt"
 SCENTNET_PRE_PATH     = MODEL_DIR / "scentnet_preprocessor.joblib"
 
 
-# Documents the Arduino → canonical name mapping. The feature builder
-# accepts both Arduino and CSV names natively, so this is documentation
-# rather than active translation.
-ARDUINO_FIELDS = {
-    "voc":         "VOC_multichannel",
-    "no2":         "NO2",
-    "ethanol":     "Ethanol",
-    "co_h2":       "CoH2",
-    "voc_raw":     "VocRaw",
-    "nox_raw":     "NoxRaw",
-    "temperature": "Temperature",
-    "humidity":    "Humidity",
-    "gas":         "GasResist",
-}
+def _error_response(message: str) -> dict:
+    return {"error": message, "predicted_scent": "error", "confidence": 0.0}
 
 
 def _read_production_config() -> dict:
@@ -106,12 +82,8 @@ class _TorchBackend:
 
 
 def _build_scentnet(arch):
-    """Reconstruct the ScentNet architecture used in training.
-
-    The trained class wraps an `nn.Sequential` in `self.net`, so state_dict
-    keys are prefixed `net.*` — we must mirror that here for load_state_dict
-    to succeed.
-    """
+    # The trained class wraps an nn.Sequential in self.net, so state_dict
+    # keys are prefixed `net.*`. Mirror that for load_state_dict to succeed.
     import torch.nn as nn
     in_dim = arch["in_dim"]
     n_classes = arch["n_classes"]
@@ -161,11 +133,11 @@ def _load_backend():
         try:
             return _load_torch_backend(), label_encoder
         except ImportError:
-            print("⚠️  production.json requests torch backend but PyTorch is "
-                  "not installed; falling back to sklearn pipeline.joblib",
+            print("production.json requests torch backend but PyTorch is not "
+                  "installed; falling back to sklearn pipeline.joblib",
                   file=sys.stderr)
         except Exception as e:
-            print(f"⚠️  Failed to load PyTorch backend ({e}); "
+            print(f"Failed to load PyTorch backend ({e}); "
                   "falling back to sklearn pipeline.joblib", file=sys.stderr)
 
     return _load_sklearn_backend(label_encoder), label_encoder
@@ -173,29 +145,20 @@ def _load_backend():
 
 try:
     BACKEND, LABEL_ENCODER = _load_backend()
-    print(f"✅ TeleScent backend loaded ({BACKEND.kind})", file=sys.stderr)
+    print(f"TeleScent backend loaded ({BACKEND.kind})", file=sys.stderr)
 except Exception as e:
     BACKEND = LABEL_ENCODER = None
-    print(f"❌ Could not load model: {e}", file=sys.stderr)
+    print(f"Could not load model: {e}", file=sys.stderr)
 
 
 def predict_scent(sensor_reading: dict) -> dict:
-    """Run one prediction. Accepts Arduino or CSV-style field names."""
     if BACKEND is None or LABEL_ENCODER is None:
-        return {
-            "error": "Model not loaded — run scent_classification.ipynb first.",
-            "predicted_scent": "error",
-            "confidence": 0.0,
-        }
+        return _error_response("Model not loaded — run scent_classification.ipynb first.")
 
     try:
         row = pd.DataFrame([sensor_reading])
         pred_enc, proba = BACKEND.predict(row)
 
-        # `BACKEND.classes` is the list of class names aligned to `proba`
-        # columns. For the sklearn backend this is `LabelEncoder.classes_`;
-        # for the torch backend it's the class_names stored in scentnet.pt
-        # (which were derived from the same LabelEncoder at training time).
         class_names = BACKEND.classes
         pred_label = str(class_names[pred_enc])
 
@@ -214,22 +177,14 @@ def predict_scent(sensor_reading: dict) -> dict:
         }
 
     except Exception as e:
-        return {
-            "error": f"Prediction failed: {e}",
-            "predicted_scent": "error",
-            "confidence": 0.0,
-        }
+        return _error_response(f"Prediction failed: {e}")
 
 
 def main() -> None:
     try:
         sensor_reading = json.loads(sys.stdin.read())
     except json.JSONDecodeError as e:
-        print(json.dumps({
-            "error": f"Invalid JSON input: {e}",
-            "predicted_scent": "error",
-            "confidence": 0.0,
-        }))
+        print(json.dumps(_error_response(f"Invalid JSON input: {e}")))
         sys.exit(1)
 
     result = predict_scent(sensor_reading)

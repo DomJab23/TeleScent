@@ -5,11 +5,11 @@ import NavBar from './components/NavBar';
 import './App.css';
 import { ColorModeProvider } from './contexts/ColorModeContext';
 
+const NO_NAVBAR_PATHS = ['/login', '/register'];
+
 function AppContent() {
   const location = useLocation();
-  
-  // Hide NavBar on login and register pages
-  const hideNavBar = location.pathname === '/login' || location.pathname === '/register';
+  const hideNavBar = NO_NAVBAR_PATHS.includes(location.pathname);
 
   return (
     <>

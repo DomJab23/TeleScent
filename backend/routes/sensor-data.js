@@ -1,512 +1,377 @@
 const express = require('express');
 const router = express.Router();
-const { authenticateToken } = require('../middleware/auth');
-const { sensorDataStore, predictionStore } = require('../services/dataStore');
+const {
+  sensorDataStore,
+  predictionStore,
+  storePrediction,
+} = require('../services/dataStore');
+const {
+  EMITTER_OFF,
+  emitterOff,
+  sendError,
+} = require('../services/sensorPayload');
+const {
+  getPrediction,
+  scentToEmitterControl,
+} = require('../services/predictionService');
+const { SensorData } = require('../models');
+const { appendToCsv } = require('../services/csvExporter');
 
-// SSE clients list
+const MAX_READINGS_PER_DEVICE = 100;
+const VOC_NO2_DROP_THRESHOLD = 4;
+const CONSECUTIVE_FORCE_LIMIT = 3;
+
 const sseClients = [];
-/**
- * POST /api/sensor-data
- * Receive sensor data from Arduino/ESP32
- * 
- * Expected JSON body (from Arduino):
- * {
- *   "device_id": "string",
- *   "timestamp": number (milliseconds),
- *   "temperature": number,
- *   "humidity": number,
- *   "pressure": number,
- *   "gas": number,
- *   "voc_raw": number,
- *   "nox_raw": number,
- *   "no2": number,
- *   "ethanol": number,
- *   "voc": number,
- *   "co_h2": number
- * }
- */
-// NOTE: Authentication temporarily disabled for GSM testing
+
+function buildDataEntry(body) {
+  const deviceId = body.device_id || body.deviceId;
+  return {
+    deviceId,
+    timestamp:   body.timestamp || Date.now(),
+    temperature: body.temperature ?? null,
+    humidity:    body.humidity ?? null,
+    pressure:    body.pressure ?? null,
+    gas:         body.gas ?? null,
+    voc_raw:     body.voc_raw ?? null,
+    nox_raw:     body.nox_raw ?? null,
+    no2:         body.no2 ?? null,
+    ethanol:     body.ethanol ?? null,
+    voc:         body.voc ?? null,
+    co_h2:       body.co_h2 ?? null,
+    receivedAt:  new Date().toISOString(),
+    userId:      'anonymous',
+  };
+}
+
+function pushReading(deviceId, entry) {
+  if (!sensorDataStore[deviceId]) sensorDataStore[deviceId] = [];
+  sensorDataStore[deviceId].push(entry);
+  if (sensorDataStore[deviceId].length > MAX_READINGS_PER_DEVICE) {
+    sensorDataStore[deviceId].shift();
+  }
+}
+
+function detectVocNo2Drop(deviceId, entry) {
+  const history = sensorDataStore[deviceId];
+  if (!history || history.length < 2) return { dropped: false, rose: false };
+  const prev = history[history.length - 2];
+  const dVoc = (prev.voc ?? 0) - (entry.voc ?? 0);
+  const dNo2 = (prev.no2 ?? 0) - (entry.no2 ?? 0);
+  return {
+    dropped: dVoc >= VOC_NO2_DROP_THRESHOLD || dNo2 >= VOC_NO2_DROP_THRESHOLD,
+    rose:    -dVoc >= VOC_NO2_DROP_THRESHOLD || -dNo2 >= VOC_NO2_DROP_THRESHOLD,
+  };
+}
+
+function getConsecutiveState(deviceId) {
+  if (!predictionStore._consecutiveState) predictionStore._consecutiveState = {};
+  if (!predictionStore._consecutiveState[deviceId]) {
+    predictionStore._consecutiveState[deviceId] = { lastScent: null, count: 0 };
+  }
+  return predictionStore._consecutiveState[deviceId];
+}
+
+function forceNoScentPrediction() {
+  return {
+    finalScent: 'no_scent',
+    finalConfidence: 1.0,
+    finalTopPredictions: [{ scent: 'no_scent', confidence: 1.0 }],
+  };
+}
+
+function applyConsecutiveLogic(deviceId, prediction, dropped) {
+  const state = getConsecutiveState(deviceId);
+  let { predicted_scent: finalScent, confidence: finalConfidence, top_predictions: finalTopPredictions } = prediction;
+  let forcedNoScent = false;
+
+  if (dropped) {
+    ({ finalScent, finalConfidence, finalTopPredictions } = forceNoScentPrediction());
+    forcedNoScent = true;
+    state.lastScent = 'no_scent';
+    state.count = 0;
+  } else if (finalScent !== state.lastScent) {
+    state.lastScent = finalScent;
+    state.count = 1;
+  } else {
+    state.count += 1;
+    if (state.count >= CONSECUTIVE_FORCE_LIMIT && finalScent !== 'no_scent') {
+      ({ finalScent, finalConfidence, finalTopPredictions } = forceNoScentPrediction());
+      forcedNoScent = true;
+      state.lastScent = 'no_scent';
+      state.count = 0;
+    }
+  }
+
+  return { finalScent, finalConfidence, finalTopPredictions, forcedNoScent };
+}
+
+function resetConsecutiveOnRise(deviceId) {
+  if (predictionStore._consecutiveState?.[deviceId]) {
+    predictionStore._consecutiveState[deviceId].lastScent = null;
+    predictionStore._consecutiveState[deviceId].count = 0;
+  }
+}
+
+async function persistReading(body, dataEntry, finalScent, finalConfidence) {
+  const sensorValues = body.sensorValues || [
+    dataEntry.temperature, dataEntry.humidity, dataEntry.pressure,
+    dataEntry.gas, dataEntry.voc, dataEntry.no2,
+  ];
+
+  const dbRecord = await SensorData.create({
+    deviceId: dataEntry.deviceId,
+    scent: body.scent || null,
+    timestamp: new Date(dataEntry.timestamp),
+    sensorValues,
+    sensor0: sensorValues[0] || null,
+    sensor1: sensorValues[1] || null,
+    sensor2: sensorValues[2] || null,
+    sensor3: sensorValues[3] || null,
+    sensor4: sensorValues[4] || null,
+    sensor5: sensorValues[5] || null,
+    ethanol: dataEntry.ethanol ?? null,
+    coH2:    dataEntry.co_h2 ?? null,
+    vocRaw:  dataEntry.voc_raw ?? null,
+    noxRaw:  dataEntry.nox_raw ?? null,
+    sessionId: body.session_id || null,
+    phase:     body.phase || null,
+    predictedScent: finalScent,
+    confidence:     finalConfidence,
+  });
+
+  await appendToCsv({
+    id: dbRecord.id,
+    deviceId: dbRecord.deviceId,
+    scent: dbRecord.scent || '',
+    sessionId: dbRecord.sessionId || '',
+    phase: dbRecord.phase || '',
+    timestamp: dbRecord.timestamp,
+    sensor0: dbRecord.sensor0,
+    sensor1: dbRecord.sensor1,
+    sensor2: dbRecord.sensor2,
+    sensor3: dbRecord.sensor3,
+    sensor4: dbRecord.sensor4,
+    sensor5: dbRecord.sensor5,
+    ethanol: dbRecord.ethanol ?? '',
+    coH2: dbRecord.coH2 ?? '',
+    vocRaw: dbRecord.vocRaw ?? '',
+    noxRaw: dbRecord.noxRaw ?? '',
+    predictedScent: dbRecord.predictedScent || '',
+    confidence: dbRecord.confidence || '',
+    createdAt: dbRecord.createdAt,
+  });
+
+  return dbRecord;
+}
+
+function broadcastSse(dataEntry) {
+  const payload = JSON.stringify({ type: 'sensor', data: dataEntry });
+  for (const clientRes of sseClients) {
+    try {
+      clientRes.write(`event: sensor\n`);
+      clientRes.write(`data: ${payload}\n\n`);
+    } catch (_) { /* ignore per-client errors */ }
+  }
+}
+
 router.post('/', async (req, res) => {
   try {
-    // Support both device_id (Arduino) and deviceId (camelCase)
-    const deviceId = req.body.device_id || req.body.deviceId;
-
-    // Extract all sensor values
-    const {
-      timestamp,
-      temperature,
-      humidity,
-      pressure,
-      gas,
-      voc_raw,
-      nox_raw,
-      no2,
-      ethanol,
-      voc,
-      co_h2
-    } = req.body;
-
-    // Validate required fields
-    if (!deviceId) {
-      return res.status(400).json({
-        message: 'Missing required field: device_id',
-        received: req.body
-      });
+    const dataEntry = buildDataEntry(req.body);
+    if (!dataEntry.deviceId) {
+      return sendError(res, 400, 'Missing required field: device_id');
     }
 
-    // Create data entry with all sensor readings
-    const dataEntry = {
-      deviceId,
-      timestamp: timestamp || Date.now(),
-      temperature: temperature ?? null,
-      humidity: humidity ?? null,
-      pressure: pressure ?? null,
-      gas: gas ?? null,
-      voc_raw: voc_raw ?? null,
-      nox_raw: nox_raw ?? null,
-      no2: no2 ?? null,
-      ethanol: ethanol ?? null,
-      voc: voc ?? null,
-      co_h2: co_h2 ?? null,
-      receivedAt: new Date().toISOString(),
-      userId: req.user?.id || 'anonymous' // Handle unauthenticated requests
-    };
+    pushReading(dataEntry.deviceId, dataEntry);
 
-    console.log(`📊 Sensor data received from ${deviceId}:`, {
-      temperature: dataEntry.temperature,
-      humidity: dataEntry.humidity,
-      pressure: dataEntry.pressure,
-      gas: dataEntry.gas,
-      voc: dataEntry.voc,
-      no2: dataEntry.no2
-    });
+    const { dropped, rose } = detectVocNo2Drop(dataEntry.deviceId, dataEntry);
+    if (rose) resetConsecutiveOnRise(dataEntry.deviceId);
 
-    // Log ALL chemical sensors for ML debugging
-    console.log(`🔬 Chemical sensors (for ML):`, {
-      voc_raw: dataEntry.voc_raw,
-      nox_raw: dataEntry.nox_raw,
-      no2: dataEntry.no2,
-      ethanol: dataEntry.ethanol,
-      voc: dataEntry.voc,
-      co_h2: dataEntry.co_h2
-    });
-
-    // Store the data (grouped by device)
-    if (!sensorDataStore[deviceId]) {
-      sensorDataStore[deviceId] = [];
-    }
-    // Keep only last 100 readings per device
-    sensorDataStore[deviceId].push(dataEntry);
-    if (sensorDataStore[deviceId].length > 100) {
-      sensorDataStore[deviceId].shift();
-    }
-
-    // --- Detect scent removal by VOC/NO2 drop ---
-    // If VOC or NO2 drops by 4 or more compared to previous reading, force 'no_scent'
-    let forceNoScentByDrop = false;
-    const prev = sensorDataStore[deviceId]?.length > 1 ? sensorDataStore[deviceId][sensorDataStore[deviceId].length - 2] : null;
-    if (prev) {
-      // Use 'voc' and 'no2' fields (fall back to 0 if missing)
-      const prevVOC = prev.voc ?? 0;
-      const prevNO2 = prev.no2 ?? 0;
-      const currVOC = dataEntry.voc ?? 0;
-      const currNO2 = dataEntry.no2 ?? 0;
-      if ((prevVOC - currVOC) >= 4 || (prevNO2 - currNO2) >= 4) {
-        forceNoScentByDrop = true;
-        console.log(`🚦 VOC or NO2 dropped by 4 or more (VOC: ${prevVOC}→${currVOC}, NO2: ${prevNO2}→${currNO2}), forcing 'no_scent'.`);
-      }
-      // If VOC or NO2 rises by 4 or more, reset consecutive prediction counter for this device
-      if ((currVOC - prevVOC) >= 4 || (currNO2 - prevNO2) >= 4) {
-        if (predictionStore._consecutiveState && predictionStore._consecutiveState[deviceId]) {
-          predictionStore._consecutiveState[deviceId].lastScent = null;
-          predictionStore._consecutiveState[deviceId].count = 0;
-          console.log(`🔄 VOC or NO2 rose by 4 or more (VOC: ${prevVOC}→${currVOC}, NO2: ${prevNO2}→${currNO2}), counter reset for new scent.`);
-        }
-      }
-    }
-
-    // --- ML Prediction ---
-    // Skip prediction when ground-truth label is provided (data collection mode).
-    // The old model doesn't know new scent classes, so running it would produce
-    // misleading predictedScent values (e.g. "gingerbread" for sweet_orange).
     const isCollectionMode = !!req.body.scent;
-    const { getPrediction, scentToEmitterControl } = require('../services/predictionService');
-
-    let prediction, finalScent, finalConfidence, finalTopPredictions, forcedNoScent = false;
+    let prediction;
+    let finalScent, finalConfidence, finalTopPredictions, forcedNoScent = false;
 
     if (isCollectionMode) {
-      // Collection mode: use ground-truth label as prediction (no ML needed)
       finalScent = req.body.scent;
       finalConfidence = 1.0;
       finalTopPredictions = [{ scent: req.body.scent, confidence: 1.0 }];
       prediction = { predicted_scent: finalScent, confidence: 1.0, top_predictions: finalTopPredictions };
-      console.log(`📝 Collection mode — using ground-truth label: ${finalScent} (skipping ML prediction)`);
     } else {
-      // Live mode: run ML prediction as normal
-      console.log(`🔮 Running prediction for ${deviceId} (every POST)...`);
       prediction = await getPrediction(dataEntry);
-      console.log(`🤖 ML Prediction: ${prediction.predicted_scent} (${(prediction.confidence * 100).toFixed(1)}%)`);
-
-    // --- Consecutive prediction logic (backend, per device) ---
-    if (!predictionStore._consecutiveState) predictionStore._consecutiveState = {};
-    if (!predictionStore._consecutiveState[deviceId]) {
-      predictionStore._consecutiveState[deviceId] = { lastScent: null, count: 0 };
+      ({ finalScent, finalConfidence, finalTopPredictions, forcedNoScent } =
+        applyConsecutiveLogic(dataEntry.deviceId, prediction, dropped));
     }
-    const state = predictionStore._consecutiveState[deviceId];
-    finalScent = prediction.predicted_scent;
-    finalConfidence = prediction.confidence;
-    finalTopPredictions = prediction.top_predictions;
-
-    // If VOC or NO2 dropped by 7, force no_scent
-    if (forceNoScentByDrop) {
-      finalScent = 'no_scent';
-      finalConfidence = 1.0;
-      finalTopPredictions = [{ scent: 'no_scent', confidence: 1.0 }];
-      forcedNoScent = true;
-      state.lastScent = 'no_scent';
-      state.count = 0;
-      console.log(`🚦 Forcing 'no_scent' due to VOC/NO2 drop.`);
-    } else if (finalScent !== state.lastScent) {
-      state.lastScent = finalScent;
-      state.count = 1;
-      console.log(`🔄 Scent changed to ${finalScent}, counter reset.`);
-    } else {
-      state.count += 1;
-      console.log(`🔁 Scent '${finalScent}' count: ${state.count}`);
-      if (state.count >= 3 && finalScent !== 'no_scent') {
-        finalScent = 'no_scent';
-        finalConfidence = 1.0;
-        finalTopPredictions = [{ scent: 'no_scent', confidence: 1.0 }];
-        forcedNoScent = true;
-        state.lastScent = 'no_scent';
-        state.count = 0; // Reset counter after forcing no_scent
-        console.log(`🚦 Forcing 'no_scent' after 3 consecutive predictions. Counter reset.`);
-      }
-    }
-    } // end else (live mode)
 
     const emitterControl = scentToEmitterControl(finalScent, finalConfidence);
+    storePrediction(
+      dataEntry.deviceId,
+      { predicted_scent: finalScent, confidence: finalConfidence, top_predictions: finalTopPredictions },
+      dataEntry,
+      emitterControl,
+      { forcedNoScent },
+    );
 
-    // Store the prediction (overwrite for this device)
-    predictionStore[deviceId] = {
-      scent: finalScent,
-      confidence: finalConfidence,
-      top_predictions: finalTopPredictions,
-      emitter_control: emitterControl,
-      timestamp: new Date().toISOString(),
-      lastProcessedTime: dataEntry.receivedAt,
-      sensorData: {
-        deviceId: dataEntry.deviceId,
-        temperature: dataEntry.temperature,
-        humidity: dataEntry.humidity,
-        pressure: dataEntry.pressure,
-        gas: dataEntry.gas,
-        voc_raw: dataEntry.voc_raw,
-        nox_raw: dataEntry.nox_raw,
-        no2: dataEntry.no2,
-        ethanol: dataEntry.ethanol,
-        voc: dataEntry.voc,
-        co_h2: dataEntry.co_h2
-      },
-      forcedNoScent
-    };
-    console.log(`✅ Prediction stored for ${deviceId}:`, emitterControl);
-
-    // Save to database and CSV
     try {
-      const { SensorData } = require('../models');
-      const { appendToCsv } = require('../services/csvExporter');
-      
-      // Extract sensor values from body or dataEntry
-      const sensorValues = req.body.sensorValues || [
-        dataEntry.temperature,
-        dataEntry.humidity,
-        dataEntry.pressure,
-        dataEntry.gas,
-        dataEntry.voc,
-        dataEntry.no2
-      ];
-      
-      // Save to database
-      const dbRecord = await SensorData.create({
-        deviceId: dataEntry.deviceId,
-        scent: req.body.scent || null,  // From collection script
-        timestamp: new Date(dataEntry.timestamp),
-        sensorValues: sensorValues,
-        sensor0: sensorValues[0] || null,
-        sensor1: sensorValues[1] || null,
-        sensor2: sensorValues[2] || null,
-        sensor3: sensorValues[3] || null,
-        sensor4: sensorValues[4] || null,
-        sensor5: sensorValues[5] || null,
-        // Named chemical sensors required for ML retraining
-        ethanol: dataEntry.ethanol ?? null,
-        coH2: dataEntry.co_h2 ?? null,
-        vocRaw: dataEntry.voc_raw ?? null,
-        noxRaw: dataEntry.nox_raw ?? null,
-        // Collection session metadata
-        sessionId: req.body.session_id || null,
-        phase: req.body.phase || null,
-        predictedScent: finalScent,
-        confidence: finalConfidence,
-      });
-      
-      console.log(`💾 Saved to database: ID ${dbRecord.id}`);
-      
-      // Save to CSV
-      await appendToCsv({
-        id: dbRecord.id,
-        deviceId: dbRecord.deviceId,
-        scent: dbRecord.scent || '',
-        sessionId: dbRecord.sessionId || '',
-        phase: dbRecord.phase || '',
-        timestamp: dbRecord.timestamp,
-        sensor0: dbRecord.sensor0,
-        sensor1: dbRecord.sensor1,
-        sensor2: dbRecord.sensor2,
-        sensor3: dbRecord.sensor3,
-        sensor4: dbRecord.sensor4,
-        sensor5: dbRecord.sensor5,
-        ethanol: dbRecord.ethanol ?? '',
-        coH2: dbRecord.coH2 ?? '',
-        vocRaw: dbRecord.vocRaw ?? '',
-        noxRaw: dbRecord.noxRaw ?? '',
-        predictedScent: dbRecord.predictedScent || '',
-        confidence: dbRecord.confidence || '',
-        createdAt: dbRecord.createdAt,
-      });
+      await persistReading(req.body, dataEntry, finalScent, finalConfidence);
     } catch (saveError) {
-      console.error('⚠️  Error saving to database/CSV:', saveError);
-      // Continue even if save fails
+      console.error('Error saving to database/CSV:', saveError);
     }
 
-    // Broadcast new reading to all connected SSE clients
-    try {
-      const payload = JSON.stringify({ type: 'sensor', data: dataEntry });
-      sseClients.forEach(clientRes => {
-        try {
-          clientRes.write(`event: sensor\n`);
-          clientRes.write(`data: ${payload}\n\n`);
-        } catch (e) {
-          // ignore per-client errors
-        }
-      });
-    } catch (e) {
-      console.error('Error broadcasting SSE:', e);
-    }
+    broadcastSse(dataEntry);
 
-    // Send acknowledgment with prediction and emitter control
     res.status(200).json({
       message: 'Sensor data received and prediction updated',
       data: dataEntry,
-      prediction: prediction,
-      emitter_control: emitterControl
+      prediction,
+      emitter_control: emitterControl,
     });
-
   } catch (error) {
     console.error('Error receiving sensor data:', error);
-    res.status(500).json({
-      message: 'Internal server error',
-      error: error.message
-    });
+    sendError(res, 500, 'Internal server error', error);
   }
 });
 
-/**
- * GET /api/sensor-data/stream
- * Server-Sent Events stream that emits each incoming sensor reading as it arrives.
- */
 router.get('/stream', (req, res) => {
-  // Set headers for SSE
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders && res.flushHeaders();
-
-  // Send an initial comment to establish the stream
   res.write(': connected\n\n');
 
-  // Add to clients
   sseClients.push(res);
-
-  // Remove client when connection closes
   req.on('close', () => {
     const idx = sseClients.indexOf(res);
     if (idx !== -1) sseClients.splice(idx, 1);
   });
 });
 
-/**
- * GET /api/sensor-data/emitter
- * Get emitter control for the most recent prediction (any device)
- * Returns format: {"0":0,"1":0,"2":255,"3":0,"4":0,"5":0,"6":0,"7":0}
- */
-router.get('/emitter', async (req, res) => {
-  try {
-    console.log('📡 Emitter control requested (any device)');
-    
-    // Find the most recently updated prediction
-    let latestPrediction = null;
-    let latestTime = null;
-    let deviceWithPrediction = null;
-    
-    Object.keys(predictionStore).forEach(deviceId => {
-      const prediction = predictionStore[deviceId];
-      if (prediction && prediction.timestamp) {
-        const predictionTime = new Date(prediction.timestamp);
-        
-        if (!latestTime || predictionTime > latestTime) {
-          latestTime = predictionTime;
-          latestPrediction = prediction;
-          deviceWithPrediction = deviceId;
-        }
-      }
-    });
-    
-    // If no prediction found, return all zeros
-    if (!latestPrediction || !latestPrediction.emitter_control) {
-      console.log('⚠️  No prediction available, returning all zeros');
-      return res.json({"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"6":0,"7":0});
+function findLatestPrediction() {
+  let latest = null;
+  let latestTime = null;
+  let deviceId = null;
+  for (const id of Object.keys(predictionStore)) {
+    if (id.startsWith('_')) continue;
+    const p = predictionStore[id];
+    if (!p || !p.timestamp) continue;
+    const t = new Date(p.timestamp);
+    if (!latestTime || t > latestTime) {
+      latestTime = t;
+      latest = p;
+      deviceId = id;
     }
-    
-    // Return the emitter control
-    console.log(`✅ Sending emitter control for ${deviceWithPrediction}: ${latestPrediction.scent} (${(latestPrediction.confidence * 100).toFixed(1)}%)`);
-    console.log('   Emitter bytes:', latestPrediction.emitter_control);
-    res.json(latestPrediction.emitter_control);
-    
+  }
+  return { latest, deviceId };
+}
+
+router.get('/emitter', (req, res) => {
+  try {
+    const { latest } = findLatestPrediction();
+    res.json(latest?.emitter_control || emitterOff());
   } catch (error) {
     console.error('Error getting emitter control:', error);
-    res.json({"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"6":0,"7":0});
+    res.json(emitterOff());
   }
 });
 
-/**
- * GET /api/sensor-data/:deviceId/emitter
- * Get emitter control for latest prediction
- * Returns format: {"0":0,"1":0,"2":255,"3":0,"4":0,"5":0,"6":0,"7":0}
- */
-router.get('/:deviceId/emitter', async (req, res) => {
+router.get('/:deviceId/emitter', (req, res) => {
   try {
-    const { deviceId } = req.params;
-    const prediction = predictionStore[deviceId];
-    
-    if (!prediction || !prediction.emitter_control) {
-      return res.json({"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"6":0,"7":0});
-    }
-    
-    // Return just the emitter control object
-    res.json(prediction.emitter_control);
-    
+    const prediction = predictionStore[req.params.deviceId];
+    res.json(prediction?.emitter_control || emitterOff());
   } catch (error) {
     console.error('Error getting emitter control:', error);
-    res.json({"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"6":0,"7":0});
+    res.json(emitterOff());
   }
 });
 
-/**
- * GET /api/sensor-data/:deviceId
- * Get latest sensor data for a device
- * NOTE: Authentication temporarily disabled for testing
- */
-router.get('/:deviceId', async (req, res) => {
+router.get('/:deviceId', (req, res) => {
   try {
     const { deviceId } = req.params;
     const limit = parseInt(req.query.limit) || 10;
-
     const deviceData = sensorDataStore[deviceId] || [];
-    
-    // Return only the requested limit of most recent data
     const latestData = deviceData.slice(-limit);
-
     res.json({
       message: 'Sensor data retrieved successfully',
       deviceId,
       dataCount: latestData.length,
-      data: latestData
+      data: latestData,
     });
-
   } catch (error) {
     console.error('Error retrieving sensor data:', error);
-    res.status(500).json({
-      message: 'Internal server error',
-      error: error.message
-    });
+    sendError(res, 500, 'Internal server error', error);
   }
 });
 
-/**
- * GET /api/sensor-data
- * Get all devices and their latest data with ML predictions
- * NOTE: Authentication temporarily disabled for testing
- */
+function rowToLatestReading(row) {
+  return {
+    deviceId: row.deviceId,
+    timestamp: row.timestamp ? new Date(row.timestamp).getTime() : null,
+    temperature: row.sensor0,
+    humidity: row.sensor1,
+    pressure: row.sensor2,
+    gas: row.sensor3,
+    voc: row.sensor4,
+    no2: row.sensor5,
+    voc_raw: row.vocRaw,
+    nox_raw: row.noxRaw,
+    ethanol: row.ethanol,
+    co_h2: row.coH2,
+    receivedAt: row.createdAt,
+  };
+}
+
+async function fillFromDatabase(summary) {
+  const { Sequelize } = require('sequelize');
+  const latestRecords = await SensorData.findAll({
+    attributes: ['deviceId', [Sequelize.fn('MAX', Sequelize.col('id')), 'maxId']],
+    group: ['deviceId'],
+    raw: true,
+  });
+
+  await Promise.all(latestRecords.map(async ({ deviceId, maxId }) => {
+    if (summary[deviceId]) return;
+    const row = await SensorData.findByPk(maxId);
+    if (!row) return;
+
+    const latestReading = rowToLatestReading(row);
+    if (row.predictedScent) {
+      latestReading.ml_prediction = {
+        scent: row.predictedScent,
+        confidence: row.confidence || 0,
+        top_predictions: [{ scent: row.predictedScent, confidence: row.confidence || 0 }],
+        emitter_control: { ...EMITTER_OFF },
+        timestamp: row.createdAt,
+        source: 'database',
+      };
+    }
+    summary[deviceId] = {
+      lastUpdate: row.createdAt,
+      dataCount: 1,
+      latestReading,
+      source: 'database',
+    };
+  }));
+}
+
 router.get('/', async (req, res) => {
   try {
     const summary = {};
 
-    Object.keys(sensorDataStore).forEach(deviceId => {
+    for (const deviceId of Object.keys(sensorDataStore)) {
       const data = sensorDataStore[deviceId];
       const latestReading = data[data.length - 1] || null;
-
       if (latestReading && predictionStore[deviceId]) {
         latestReading.ml_prediction = predictionStore[deviceId];
       }
-
       summary[deviceId] = {
         lastUpdate: latestReading?.receivedAt || null,
         dataCount: data.length,
         latestReading,
       };
-    });
+    }
 
-    // Cold-start fallback: fill in any device that has DB history but no in-memory state.
     try {
-      const { SensorData } = require('../models');
-      const { Sequelize } = require('sequelize');
-      const latestRecords = await SensorData.findAll({
-        attributes: ['deviceId', [Sequelize.fn('MAX', Sequelize.col('id')), 'maxId']],
-        group: ['deviceId'],
-        raw: true,
-      });
-
-      await Promise.all(latestRecords.map(async ({ deviceId, maxId }) => {
-        if (summary[deviceId]) return;
-        const row = await SensorData.findByPk(maxId);
-        if (!row) return;
-
-        const latestReading = {
-          deviceId: row.deviceId,
-          timestamp: row.timestamp ? new Date(row.timestamp).getTime() : null,
-          temperature: row.sensor0,
-          humidity: row.sensor1,
-          pressure: row.sensor2,
-          gas: row.sensor3,
-          voc: row.sensor4,
-          no2: row.sensor5,
-          voc_raw: row.vocRaw,
-          nox_raw: row.noxRaw,
-          ethanol: row.ethanol,
-          co_h2: row.coH2,
-          receivedAt: row.createdAt,
-        };
-        if (row.predictedScent) {
-          latestReading.ml_prediction = {
-            scent: row.predictedScent,
-            confidence: row.confidence || 0,
-            top_predictions: [{ scent: row.predictedScent, confidence: row.confidence || 0 }],
-            emitter_control: { '0': 0, '1': 0, '2': 0, '3': 0, '4': 0, '5': 0, '6': 0, '7': 0 },
-            timestamp: row.createdAt,
-            source: 'database',
-          };
-        }
-        summary[deviceId] = {
-          lastUpdate: row.createdAt,
-          dataCount: 1,
-          latestReading,
-          source: 'database',
-        };
-      }));
+      await fillFromDatabase(summary);
     } catch (dbError) {
-      console.warn('DB fallback for /api/sensor-data failed:', dbError.message);
+      console.warn('DB fallback failed:', dbError.message);
     }
 
     res.json({
@@ -514,13 +379,9 @@ router.get('/', async (req, res) => {
       devices: summary,
       totalDevices: Object.keys(summary).length,
     });
-
   } catch (error) {
     console.error('Error retrieving all sensor data:', error);
-    res.status(500).json({
-      message: 'Internal server error',
-      error: error.message
-    });
+    sendError(res, 500, 'Internal server error', error);
   }
 });
 
